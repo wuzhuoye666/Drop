@@ -63,6 +63,7 @@ add_library(drop_common
   common/src/profiler_factory.cpp
   common/src/ebpf_loader.cpp
   common/src/ebpf_profiler.cpp
+  common/src/continuous_profiler.cpp
 )
 target_include_directories(drop_common PUBLIC
   ${GEN_DIR}

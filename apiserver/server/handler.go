@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,6 +53,17 @@ type CreateScheduleReq struct {
 	PID          int    `json:"pid"`
 	Duration     int    `json:"duration"`
 	Hz           int    `json:"hz"`
+}
+
+type CreateSegmentReq struct {
+	StartTs int64  `json:"start_ts"`
+	EndTs   int64  `json:"end_ts"`
+	S3Key   string `json:"s3_key"`
+}
+
+type ProfileWindowReq struct {
+	Start int64 `form:"start"`
+	End   int64 `form:"end"`
 }
 
 // ==================== Auth ====================
@@ -441,6 +453,18 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 	uid := c.GetString("uid")
 	tid := genTID()
 
+	// Store the full task creation params as JSON for cron dispatch
+	taskParams := CreateTaskReq{
+		Name:         req.Name,
+		Type:         model.TaskTypeContinuous,
+		ProfilerType: req.ProfilerType,
+		TargetIP:     req.TargetIP,
+		PID:          req.PID,
+		Duration:     0, // continuous: no duration limit
+		Hz:           req.Hz,
+	}
+	paramsJSON, _ := json.Marshal(taskParams)
+
 	mt := model.MultiTasks{
 		TID:            tid,
 		SubTIDs:        "[]",
@@ -448,6 +472,9 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 		Status:         model.TaskStatusPending,
 		AnalysisStatus: model.AnalysisStatusPending,
 		TriggerType:    model.TriggerCron,
+		CronExpr:       req.CronExpr,
+		ScheduleParams: string(paramsJSON),
+		Enabled:        true,
 	}
 	if err := s.db.Create(&mt).Error; err != nil {
 		s.logger.Error("create schedule task", zap.Error(err))
@@ -455,7 +482,14 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 		return
 	}
 
-	s.logger.Info("schedule task created (cron dispatch pending Phase 7)",
+	// Register with the cron scheduler
+	if s.cronScheduler != nil {
+		if err := s.cronScheduler.AddSchedule(tid, req.CronExpr); err != nil {
+			s.logger.Error("register cron schedule", zap.String("tid", tid), zap.Error(err))
+		}
+	}
+
+	s.logger.Info("schedule task created and registered",
 		zap.String("tid", tid),
 		zap.String("uid", uid),
 		zap.String("cron", req.CronExpr),
@@ -468,6 +502,160 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 			"cron_expr": req.CronExpr,
 		},
 	})
+}
+
+// ==================== Continuous Profile Segments ====================
+
+// ==================== Continuous Profile Segments ====================
+
+func (s *APIServer) ListSchedules(c *gin.Context) {
+	var mts []model.MultiTasks
+	s.db.Where("trigger_type = ?", model.TriggerCron).Order("created_at DESC").Find(&mts)
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": mts})
+}
+
+func (s *APIServer) ToggleSchedule(c *gin.Context) {
+	tid := c.Param("tid")
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000013, "message": err.Error()})
+		return
+	}
+
+	result := s.db.Model(&model.MultiTasks{}).Where("tid = ? AND trigger_type = ?", tid, model.TriggerCron).Update("enabled", req.Enabled)
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 4040013, "message": "schedule not found"})
+		return
+	}
+
+	// Update in-memory cron
+	if s.cronScheduler != nil {
+		if req.Enabled {
+			var mt model.MultiTasks
+			s.db.Where("tid = ?", tid).First(&mt)
+			if mt.CronExpr != "" {
+				s.cronScheduler.AddSchedule(tid, mt.CronExpr)
+			}
+		} else {
+			s.cronScheduler.RemoveSchedule(tid)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"tid": tid, "enabled": req.Enabled}})
+}
+
+func (s *APIServer) CreateSegment(c *gin.Context) {
+	tid := c.Param("tid")
+	var req CreateSegmentReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000011, "message": err.Error()})
+		return
+	}
+
+	seg := model.ContinuousProfileSegment{
+		TID:     tid,
+		StartTs: req.StartTs,
+		EndTs:   req.EndTs,
+		S3Key:   req.S3Key,
+	}
+	if err := s.db.Create(&seg).Error; err != nil {
+		s.logger.Error("create segment", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 5000011, "message": "create segment failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"id": seg.ID}})
+}
+
+func (s *APIServer) ListSegments(c *gin.Context) {
+	tid := c.Param("tid")
+
+	var segments []model.ContinuousProfileSegment
+	s.db.Where("tid = ?", tid).Order("start_ts ASC").Find(&segments)
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": segments})
+}
+
+// ==================== Profile Window Merge ====================
+
+func (s *APIServer) GetProfileWindow(c *gin.Context) {
+	tid := c.Param("tid")
+	var req ProfileWindowReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000012, "message": "start and end query params required"})
+		return
+	}
+	if req.Start == 0 || req.End == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000012, "message": "start and end query params required"})
+		return
+	}
+
+	// Find overlapping segments
+	var segments []model.ContinuousProfileSegment
+	s.db.Where("tid = ? AND start_ts < ? AND end_ts > ?", tid, req.End, req.Start).
+		Order("start_ts ASC").Find(&segments)
+
+	if len(segments) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 4040012, "message": "no segments in the requested window"})
+		return
+	}
+
+	if s.storage == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 5030012, "message": "storage not configured"})
+		return
+	}
+
+	// Merge collapsed stacks from all segments
+	ctx := context.Background()
+	merged := make(map[string]uint64)
+
+	for _, seg := range segments {
+		reader, err := s.storage.Get(ctx, seg.S3Key)
+		if err != nil {
+			s.logger.Warn("skip segment, cannot download", zap.String("s3_key", seg.S3Key), zap.Error(err))
+			continue
+		}
+		// Parse collapsed stacks line by line
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			lastSpace := strings.LastIndex(line, " ")
+			if lastSpace < 0 {
+				continue
+			}
+			stack := line[:lastSpace]
+			countStr := line[lastSpace+1:]
+			count, err := strconv.ParseUint(countStr, 10, 64)
+			if err != nil {
+				continue
+			}
+			merged[stack] += count
+		}
+		reader.Close()
+	}
+
+	if len(merged) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 4040013, "message": "no data in the requested window"})
+		return
+	}
+
+	// Build merged output
+	var buf strings.Builder
+	for stack, count := range merged {
+		buf.WriteString(stack)
+		buf.WriteByte(' ')
+		buf.WriteString(strconv.FormatUint(count, 10))
+		buf.WriteByte('\n')
+	}
+
+	c.Header("Content-Type", "text/plain; charset=utf-8")
+	c.String(http.StatusOK, buf.String())
 }
 
 // ==================== Helpers ====================

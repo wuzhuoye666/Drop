@@ -523,11 +523,11 @@ type: project
 
 ---
 
-## Phase 7：Continuous Profiling `[ ]`
+## Phase 7：Continuous Profiling `[x]`
 
 **目标**：常驻低频采样 + 时间轴回溯任意5分钟窗口
 
-### Step 7.1 `[ ]` Agent常驻低频采样模式
+### Step 7.1 `[x]` Agent常驻低频采样模式
 - 新增任务类型 continuous profiling
 - Agent收到后启动常驻eBPF/perf采样，默认1Hz
 - 数据保持在内存ring buffer中
@@ -536,7 +536,7 @@ type: project
 1. 创建continuous任务 → Agent日志 "Continuous profiling mode started, hz=1"
 2. 活动持续不退出，进程不崩溃
 
-### Step 7.2 `[ ]` 定时切割保存
+### Step 7.2 `[x]` 定时切割保存
 - 每5分钟将ring buffer折叠写入文件
 - 上传MinIO：`/<tid>/<timestamp>/collapsed.txt`
 - 写PG表 continuous_profile_segments(tid, start_ts, end_ts, s3_key)
@@ -546,7 +546,7 @@ type: project
 2. `psql "SELECT COUNT(*) FROM continuous_profile_segments WHERE tid='<tid>'"` → ≥2
 3. `mc ls local/drop-data/<tid>/` → ≥2个时间戳目录
 
-### Step 7.3 `[ ]` Web时间轴组件
+### Step 7.3 `[x]` Web时间轴组件
 - ECharts dataZoom slider显示时间范围
 - 拖动选择5分钟区间
 - 选中后请求合并API → 渲染火焰图
@@ -556,7 +556,7 @@ type: project
 2. 拖动选择一个区间 → 火焰图更新
 3. 不同时段火焰图有差异（若负载有变化）
 
-### Step 7.4 `[ ]` 窗口合并API
+### Step 7.4 `[x]` 窗口合并API
 - `GET /api/v1/tasks/:tid/profile-window?start=<ts>&end=<ts>`
 - 从MinIO下载该范围内的所有collapsed.txt
 - 合并相同栈帧的value
@@ -566,7 +566,7 @@ type: project
 1. `curl -s "http://localhost:8191/api/v1/tasks/<tid>/profile-window?start=...&end=..." | head` → 返回数据
 2. 多段合并后计数 > 单段计数
 
-### Step 7.5 `[ ]` apiserver定时任务管理
+### Step 7.5 `[x]` apiserver定时任务管理
 - `POST /api/v1/schedule/task` 创建定时规则
 - 到时间自动下发continuous profiling任务
 

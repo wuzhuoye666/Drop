@@ -10,11 +10,13 @@
 
 #include "profiler.h"
 #include "profiler_factory.h"
+#include "continuous_profiler.h"
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
@@ -338,6 +340,10 @@ static void HeartbeatThread(std::shared_ptr<grpc::Channel> channel) {
   }
 }
 
+// ── Active continuous profilers (indexed by tid) ────────────────────
+static std::map<std::string, drop::ContinuousProfiler*> g_continuous_profilers;
+static std::mutex g_continuous_mu;
+
 // ── Worker thread (real profiler execution) ────────────────────────
 static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
   auto hm_stub = drop::hotmethod::Hotmethod::NewStub(channel);
@@ -355,64 +361,103 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
     const std::string& tid = task.task_id();
     const std::string output_dir = "/tmp/drop_" + tid;
 
-    LOG(INFO) << "Task " << tid << " started";
+    LOG(INFO) << "Task " << tid << " started"
+              << " type=" << task.task_type()
+              << " profiler=" << task.profiler_type();
 
-    // Create the appropriate profiler
-    auto profiler = drop::CreateProfiler(task.profiler_type());
-    if (!profiler) {
-      // Unsupported profiler type — report failure
+    bool is_continuous = (task.task_type() == 1);
+
+    if (is_continuous) {
+      // ── Continuous profiling path ──────────────────────────────
+      auto cp = new drop::ContinuousProfiler();
+      cp->set_apiserver_addr(FLAGS_apiserver_addr);
+
+      {
+        std::lock_guard<std::mutex> lk(g_continuous_mu);
+        g_continuous_profilers[tid] = cp;
+      }
+
+      // Run in a dedicated thread so worker can handle stop requests
+      std::thread runner([cp, task, output_dir, tid, &hm_stub]() {
+        std::string error_msg;
+        bool ok = cp->record(task, output_dir, &error_msg);
+        LOG(INFO) << "Continuous task " << tid
+                  << (ok ? " finished cleanly" : " failed: " + error_msg);
+
+        // Report final result to server
+        grpc::ClientContext ctx;
+        ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+        drop::hotmethod::TaskResult result;
+        result.set_task_id(tid);
+        if (!ok) result.set_error_message(error_msg);
+
+        google::protobuf::Empty empty;
+        auto status = hm_stub->NotifyResult(&ctx, result, &empty);
+        if (!status.ok()) {
+          LOG(ERROR) << "NotifyResult failed for continuous " << tid << ": " << status.error_message();
+        }
+
+        delete cp;
+      });
+      runner.detach();
+
+    } else {
+      // ── Single-shot profiling path (existing logic) ────────────
+      auto profiler = drop::CreateProfiler(task.profiler_type());
+      if (!profiler) {
+        grpc::ClientContext ctx;
+        ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+        drop::hotmethod::TaskResult result;
+        result.set_task_id(tid);
+        result.set_error_message("unsupported profiler_type=" + std::to_string(task.profiler_type()));
+        google::protobuf::Empty empty;
+        hm_stub->NotifyResult(&ctx, result, &empty);
+        LOG(ERROR) << "Task " << tid << ": unknown profiler_type";
+        continue;
+      }
+
+      // Run collection
+      std::string error_msg;
+      bool ok = profiler->record(task, output_dir, &error_msg);
+
+      LOG(INFO) << "Task " << tid << " " << (ok ? "finished" : "failed: " + error_msg);
+
+      // Report result back to server
       grpc::ClientContext ctx;
       ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+
       drop::hotmethod::TaskResult result;
       result.set_task_id(tid);
-      result.set_error_message("unsupported profiler_type=" + std::to_string(task.profiler_type()));
-      google::protobuf::Empty empty;
-      hm_stub->NotifyResult(&ctx, result, &empty);
-      LOG(ERROR) << "Task " << tid << ": unknown profiler_type";
-      continue;
-    }
-
-    // Run collection
-    std::string error_msg;
-    bool ok = profiler->record(task, output_dir, &error_msg);
-
-    LOG(INFO) << "Task " << tid << " " << (ok ? "finished" : "failed: " + error_msg);
-
-    // Report result back to server
-    grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-
-    drop::hotmethod::TaskResult result;
-    result.set_task_id(tid);
-    if (!ok) {
-      result.set_error_message(error_msg);
-    } else {
-      // Upload collected files to MinIO via apiserver
-      auto files = profiler->collect_result();
-      std::string uploaded_cos_key;
-      bool upload_ok = true;
-      for (size_t i = 0; i < files.size(); ++i) {
-        std::string filepath = output_dir + "/" + files[i];
-        std::string this_cos_key;
-        if (!UploadFileToAPI(tid, filepath, &this_cos_key)) {
-          LOG(ERROR) << "Failed to upload " << filepath << ": " << this_cos_key;
-          upload_ok = false;
-          result.set_error_message("upload failed: " + this_cos_key);
-          break;
+      if (!ok) {
+        result.set_error_message(error_msg);
+      } else {
+        // Upload collected files to MinIO via apiserver
+        auto files = profiler->collect_result();
+        std::string uploaded_cos_key;
+        bool upload_ok = true;
+        for (size_t i = 0; i < files.size(); ++i) {
+          std::string filepath = output_dir + "/" + files[i];
+          std::string this_cos_key;
+          if (!UploadFileToAPI(tid, filepath, &this_cos_key)) {
+            LOG(ERROR) << "Failed to upload " << filepath << ": " << this_cos_key;
+            upload_ok = false;
+            result.set_error_message("upload failed: " + this_cos_key);
+            break;
+          }
+          if (i == 0) uploaded_cos_key = this_cos_key;
         }
-        if (i == 0) uploaded_cos_key = this_cos_key;
+        if (upload_ok) {
+          result.set_cos_key(uploaded_cos_key);
+        }
       }
-      if (upload_ok) {
-        result.set_cos_key(uploaded_cos_key);
-      }
-    }
 
-    google::protobuf::Empty empty;
-    auto status = hm_stub->NotifyResult(&ctx, result, &empty);
-    if (!status.ok()) {
-      LOG(ERROR) << "NotifyResult failed for " << tid << ": " << status.error_message();
-    } else {
-      LOG(INFO) << "NotifyResult OK for " << tid;
+      google::protobuf::Empty empty;
+      auto status = hm_stub->NotifyResult(&ctx, result, &empty);
+      if (!status.ok()) {
+        LOG(ERROR) << "NotifyResult failed for " << tid << ": " << status.error_message();
+      } else {
+        LOG(INFO) << "NotifyResult OK for " << tid;
+      }
     }
   }
 }

@@ -32,6 +32,28 @@ export const getTask = (tid: string) => api.get(`/tasks/${tid}`);
 export const deleteTask = (tid: string) => api.delete(`/tasks/${tid}`);
 export const retryTask = (tid: string) => api.post(`/tasks/${tid}/retry`);
 
+// Continuous Profiling Segments
+export const listSegments = (tid: string) => api.get(`/tasks/${tid}/segments`);
+export const getProfileWindow = (tid: string, start: number, end: number) =>
+  api.get(`/tasks/${tid}/profile-window`, {
+    params: { start, end },
+    responseType: 'text',
+  });
+
+// Schedules
+export const listSchedules = () => api.get('/schedules');
+export const createScheduleTask = (data: {
+  name: string;
+  cron_expr: string;
+  type: number;
+  profiler_type: number;
+  target_ip: string;
+  pid: number;
+  hz: number;
+}) => api.post('/schedule/task', data);
+export const toggleSchedule = (tid: string, enabled: boolean) =>
+  api.put(`/schedule/${tid}/toggle`, { enabled });
+
 // COS files
 export const listCosFiles = (tid: string) =>
   api.get('/cosfiles', { params: { tid } });

@@ -14,22 +14,25 @@ import (
 
 // APIServer holds all shared dependencies.
 type APIServer struct {
-	db      *gorm.DB
-	grpcCC  *grpc.ClientConn
-	storage storage.Storage
-	cfg     *config.Config
-	logger  *zap.Logger
+	db            *gorm.DB
+	grpcCC        *grpc.ClientConn
+	storage       storage.Storage
+	cfg           *config.Config
+	logger        *zap.Logger
+	cronScheduler *CronScheduler
 }
 
 // New creates an APIServer.
 func New(db *gorm.DB, cc *grpc.ClientConn, storage storage.Storage, cfg *config.Config, logger *zap.Logger) *APIServer {
-	return &APIServer{
+	s := &APIServer{
 		db:      db,
 		grpcCC:  cc,
 		storage: storage,
 		cfg:     cfg,
 		logger:  logger,
 	}
+	s.cronScheduler = NewCronScheduler(s)
+	return s
 }
 
 // updateTaskStatus performs a validated status transition inside a single transaction.
@@ -112,4 +115,18 @@ func isTransitionAllowed(old, new int) bool {
 		return false
 	}
 	return false
+}
+
+// StartCronScheduler launches the cron engine for scheduled continuous profiling.
+func (s *APIServer) StartCronScheduler() {
+	if s.cronScheduler != nil {
+		s.cronScheduler.Start()
+	}
+}
+
+// StopCronScheduler gracefully stops the cron engine.
+func (s *APIServer) StopCronScheduler() {
+	if s.cronScheduler != nil {
+		s.cronScheduler.Stop()
+	}
 }

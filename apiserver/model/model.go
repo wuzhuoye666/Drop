@@ -67,12 +67,15 @@ func (HotmethodTask) TableName() string { return "hotmethod_task" }
 
 // MultiTasks 多目标任务
 type MultiTasks struct {
-	TID        string `gorm:"primaryKey;size:64" json:"tid"`
-	SubTIDs    string `gorm:"type:jsonb;default:'[]'" json:"sub_tids"` // JSON array of sub task TIDs
-	Type       int    `gorm:"not null;default:0" json:"type"`
-	Status     int    `gorm:"not null;default:0" json:"status"`
-	AnalysisStatus int `gorm:"not null;default:0" json:"analysis_status"`
-	TriggerType int    `gorm:"not null;default:0" json:"trigger_type"` // 0=手动 1=定时
+	TID            string `gorm:"column:tid;primaryKey;size:64" json:"tid"`
+	SubTIDs        string `gorm:"type:jsonb;default:'[]'" json:"sub_tids"` // JSON array of sub task TIDs
+	Type           int    `gorm:"not null;default:0" json:"type"`
+	Status         int    `gorm:"not null;default:0" json:"status"`
+	AnalysisStatus int    `gorm:"not null;default:0" json:"analysis_status"`
+	TriggerType    int    `gorm:"not null;default:0" json:"trigger_type"` // 0=手动 1=定时
+	CronExpr       string `gorm:"size:128" json:"cron_expr,omitempty"`
+	ScheduleParams string `gorm:"type:jsonb;default:'{}'" json:"schedule_params,omitempty"` // profiler config as JSON
+	Enabled        bool   `gorm:"default:true" json:"enabled"`
 }
 
 func (MultiTasks) TableName() string { return "multi_tasks" }
@@ -119,6 +122,17 @@ type TaskStatusHistory struct {
 }
 
 func (TaskStatusHistory) TableName() string { return "task_status_history" }
+
+// ContinuousProfileSegment 连续Profiling的时间片段
+type ContinuousProfileSegment struct {
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	TID      string `gorm:"column:tid;size:64;not null;index:idx_tid_start" json:"tid"`
+	StartTs  int64  `gorm:"not null;index:idx_tid_start,priority:2" json:"start_ts"`  // epoch seconds
+	EndTs    int64  `gorm:"not null" json:"end_ts"`                                  // epoch seconds
+	S3Key    string `gorm:"column:s3_key;size:512;not null" json:"s3_key"`           // MinIO object key
+}
+
+func (ContinuousProfileSegment) TableName() string { return "continuous_profile_segments" }
 
 // AgentAuditLog Agent 状态变更审计
 type AgentAuditLog struct {

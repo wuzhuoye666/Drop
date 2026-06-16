@@ -62,6 +62,7 @@ func main() {
 		&model.AnalysisSuggestion{},
 		&model.TaskStatusHistory{},
 		&model.AgentAuditLog{},
+		&model.ContinuousProfileSegment{},
 	); err != nil {
 		logger.Fatal("auto migrate", zap.Error(err))
 	}
@@ -95,6 +96,9 @@ func main() {
 	// Start analysis scheduler
 	srv.StartAnalysisScheduler()
 
+	// Start cron scheduler for continuous profiling
+	srv.StartCronScheduler()
+
 	// Create Gin router
 	if cfg.Server.DevMode {
 		gin.SetMode(gin.TestMode)
@@ -115,6 +119,7 @@ func main() {
 
 	// Agent internal endpoints (no cookie auth, outside api group)
 	r.POST("/api/v1/tasks/:tid/upload/*filename", srv.UploadTaskFile)
+	r.POST("/api/v1/tasks/:tid/segments", srv.CreateSegment)
 
 	// API group with auth middleware
 	api := r.Group("/api/v1")
@@ -147,6 +152,12 @@ func main() {
 
 		// Schedule
 		api.POST("/schedule/task", srv.CreateScheduleTask)
+		api.GET("/schedules", srv.ListSchedules)
+		api.PUT("/schedule/:tid/toggle", srv.ToggleSchedule)
+
+		// Continuous Profiling Segments (read-only for users)
+		api.GET("/tasks/:tid/segments", srv.ListSegments)
+		api.GET("/tasks/:tid/profile-window", srv.GetProfileWindow)
 	}
 	addr := cfg.Server.Port
 	logger.Info("apiserver starting", zap.String("addr", addr))

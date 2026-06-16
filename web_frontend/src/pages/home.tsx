@@ -25,7 +25,10 @@ export default function HomePage() {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Drop Performance Profiler</h1>
-        <Link to="/tasks" style={{ color: '#1890ff' }}>All Tasks →</Link>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <Link to="/schedules" style={{ color: '#1890ff', fontSize: 14 }}>Schedules</Link>
+          <Link to="/tasks" style={{ color: '#1890ff', fontSize: 14 }}>All Tasks →</Link>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>

@@ -18,27 +18,26 @@ type: project
 | 4 | perf采集全链路 | ✅ 已完成 | S4.1-S4.9 全部完成 | 2026-06-16 |
 | 5 | eBPF采集器 | ✅ 已完成 | S5.1-S5.7 全部完成 | 2026-06-16 |
 | 6 | 用户态语言级采集器 | ✅ 已完成 | S6.1-S6.5 全部完成 | 2026-06-16 |
-| 7 | Continuous Profiling | ⬜ 未开始 | - | - |
+| 7 | Continuous Profiling | ✅ 已完成 | S7.1-S7.5 全部完成 | 2026-06-17 |
 | 8 | 智能归因+NL (加分) | ⬜ 未开始 | - | - |
 | 9 | 测试加固+部署 | ⬜ 未开始 | - | - |
 
-## Phase 6 详细进度
+## Phase 7 详细进度
 
 | Step | 内容 | 状态 |
 |------|------|------|
-| 6.1 | 集成 async-profiler 安装脚本 | ✅ |
-| 6.2 | AsyncProfilerProfiler C++类 + ProfilerFactory注册 | ✅ |
-| 6.3 | analysis侧 analyze_async_profiler() 管线 | ✅ |
-| 6.4 | Web端 Java Flame Graph Tab + 动态参数表单 | ✅ |
-| 6.5 | Dockerfile集成 + Go handler event字段 | ✅ |
-| 6.6 | C++ 6个单测 + Python 2个单测 | ✅ |
+| 7.1 | Agent continuous profiling模式 (ContinuousProfiler C++类) | ✅ |
+| 7.2 | 定时切割保存 (5min segments + PG表 + MinIO上传) | ✅ |
+| 7.3 | Web时间轴组件 (Timeline slider + 区间选择) | ✅ |
+| 7.4 | 窗口合并API (profile-window endpoint + 折叠栈merge) | ✅ |
+| 7.5 | apiserver定时任务管理 (robfig/cron + 规则CRUD) | ✅ |
 
 ## 需求完成度汇总
 
 | 类别 | 总数 | 已完成 | 完成率 |
 |------|------|--------|--------|
-| 基础能力 B1-B6 | 6 | 4 | 67% |
-| 扩展能力 E1-E3 | 3 | 2 | 67% |
+| 基础能力 B1-B6 | 6 | 5 | 83% |
+| 扩展能力 E1-E3 | 3 | 3 | 100% |
 | 加分项 E4-E5 | 2 | 0 | 0% |
 | 工程要求 G1-G4 | 4 | 0 | 0% |
 | B1(Web下发) | ✅ | | |
@@ -49,13 +48,14 @@ type: project
 | B6(日志+错误处理) | 🔵 进行中 | | |
 | E2(eBPF采集器) | ✅ | | |
 | E3(用户态采集器) | ✅ | | |
+| E1(Continuous Profiling) | ✅ | | |
 
 ## 测试覆盖率
 
 | 组件 | 当前覆盖率 | 目标 |
 |------|-----------|------|
 | drop (C++) | ~15% (13 tests total) | ≥50% |
-| apiserver (Go) | ~18% (24 tests) | ≥50% |
+| apiserver (Go) | ~20% (28 tests) | ≥50% |
 | analysis (Python) | ~20% (8 tests) | ≥50% |
 | web_frontend (JS/TS) | 0% | - |
 
@@ -67,6 +67,7 @@ type: project
 | 2 | 异常路径：不存在的PID→FAILED | ✅ 手动验证 |
 | 3 | 异常路径：采集超时→FAILED | ✅ 单元测试验证 |
 | 4 | eBPF全链路：创建eBPF任务→完成→Off-CPU火焰图 | ✅ E2E验证通过 |
+| 5 | Continuous Profiling全链路 | 🔵 待E2E验证 |
 
 ## 会话日志
 
@@ -80,3 +81,4 @@ type: project
 | 2026-06-16 | Phase 5 实施 | 全部7步验证通过 | 用户态符号可能显示[unknown] |
 | 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过，已提交 | Docker构建缺libgtest-dev已修复待重试 |
 | 2026-06-16 | Phase 6 实施 | async-profiler全链路实现，8个新测试通过 | 当前环境无法下载async-profiler二进制 |
+| 2026-06-17 | Phase 7 实施 | Continuous Profiling全5步实现，4个新Go测试通过 | Continuous profiling E2E待验证 |

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { getTask, listCosFiles } from '../api';
+import { getTask, listCosFiles, listSegments, getProfileWindow } from '../api';
 import { taskStatusLabel, taskStatusColor, analysisStatusLabel, analysisStatusColor, profilerTypeName } from '../utils';
 
 interface Task {
@@ -26,14 +26,27 @@ interface CosFile {
   url: string;
 }
 
+interface Segment {
+  id: number;
+  tid: string;
+  start_ts: number;
+  end_ts: number;
+  s3_key: string;
+}
+
 export default function TaskResultPage() {
   const [searchParams] = useSearchParams();
   const tid = searchParams.get('tid') || '';
   const [task, setTask] = useState<Task | null>(null);
   const [files, setFiles] = useState<CosFile[]>([]);
-  const [tab, setTab] = useState<'flamegraph' | 'topn' | 'ai'>('flamegraph');
+  const [tab, setTab] = useState<'flamegraph' | 'timeline' | 'topn' | 'ai'>('flamegraph');
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [windowCollapsed, setWindowCollapsed] = useState<string | null>(null);
+  const [windowLoading, setWindowLoading] = useState(false);
 
-  useEffect(() => {
+  const isContinuous = task?.type === 1;
+
+  const fetchTask = useCallback(() => {
     if (!tid) return;
     getTask(tid).then(res => {
       setTask(res.data.data.task);
@@ -41,16 +54,33 @@ export default function TaskResultPage() {
     });
   }, [tid]);
 
+  useEffect(() => { fetchTask(); }, [fetchTask]);
+
   useEffect(() => {
     if (!tid) return;
-    const id = setInterval(() => {
-      getTask(tid).then(res => {
-        setTask(res.data.data.task);
-        setFiles(res.data.data.files ?? []);
-      });
-    }, 3000);
+    const id = setInterval(fetchTask, 3000);
     return () => clearInterval(id);
-  }, [tid]);
+  }, [tid, fetchTask]);
+
+  // Fetch segments for continuous tasks
+  useEffect(() => {
+    if (!tid || !isContinuous) return;
+    const fetchSegs = () => {
+      listSegments(tid).then(res => {
+        setSegments(res.data.data ?? []);
+      }).catch(() => {});
+    };
+    fetchSegs();
+    const id = setInterval(fetchSegs, 10000);
+    return () => clearInterval(id);
+  }, [tid, isContinuous]);
+
+  // Auto-switch to timeline tab for continuous tasks
+  useEffect(() => {
+    if (isContinuous && tab === 'flamegraph' && segments.length > 0) {
+      setTab('timeline');
+    }
+  }, [isContinuous, segments.length, tab]);
 
   if (!task) return <div style={{ padding: 24 }}>Loading...</div>;
 
@@ -62,10 +92,21 @@ export default function TaskResultPage() {
 
   const flameTabLabel = isEbpf ? 'Off-CPU Flame Graph' : isAsyncProfiler ? 'Java Flame Graph' : 'CPU Flame Graph';
 
+  const handleWindowSelect = async (start: number, end: number) => {
+    setWindowLoading(true);
+    try {
+      const res = await getProfileWindow(tid, start, end);
+      setWindowCollapsed(res.data);
+    } catch {
+      setWindowCollapsed(null);
+    }
+    setWindowLoading(false);
+  };
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       <div style={{ marginBottom: 16 }}>
-        <Link to="/tasks" style={{ color: '#1890ff', fontSize: 13 }}>← Back to Tasks</Link>
+        <Link to="/tasks" style={{ color: '#1890ff', fontSize: 13 }}>&larr; Back to Tasks</Link>
       </div>
 
       <h2 style={{ margin: '0 0 16px' }}>Task: {task.name}</h2>
@@ -73,6 +114,7 @@ export default function TaskResultPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13, marginBottom: 24, padding: 16, background: '#fafafa', borderRadius: 8 }}>
         <div><strong>TID:</strong> {task.tid}</div>
         <div><strong>Profiler:</strong> {profilerTypeName(task.profiler_type)}</div>
+        <div><strong>Type:</strong> {isContinuous ? 'Continuous' : 'Single-shot'}</div>
         <div><strong>Target:</strong> {task.target_ip}</div>
         <div><strong>Status:</strong> <span style={{ color: taskStatusColor(task.status) }}>{taskStatusLabel(task.status)}</span></div>
         <div><strong>Analysis:</strong> <span style={{ color: analysisStatusColor(task.analysis_status) }}>{analysisStatusLabel(task.analysis_status)}</span></div>
@@ -84,7 +126,7 @@ export default function TaskResultPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 16 }}>
-        {(['flamegraph', 'topn', 'ai'] as const).map(t => (
+        {(['flamegraph', ...(isContinuous ? ['timeline'] as const : []), 'topn', 'ai'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -95,7 +137,7 @@ export default function TaskResultPage() {
               marginBottom: -2,
             }}
           >
-            {t === 'flamegraph' ? flameTabLabel : t === 'topn' ? 'Top N' : 'AI Suggestion'}
+            {t === 'flamegraph' ? flameTabLabel : t === 'timeline' ? 'Timeline' : t === 'topn' ? 'Top N' : 'AI Suggestion'}
           </button>
         ))}
       </div>
@@ -113,6 +155,16 @@ export default function TaskResultPage() {
             <p style={{ color: '#8c8c8c' }}>Flame graph not yet available (analysis pending or in progress)</p>
           )}
         </div>
+      )}
+
+      {tab === 'timeline' && isContinuous && (
+        <TimelinePanel
+          segments={segments}
+          collapsed={windowCollapsed}
+          loading={windowLoading}
+          onWindowSelect={handleWindowSelect}
+          profilerType={task.profiler_type}
+        />
       )}
 
       {tab === 'topn' && (
@@ -133,6 +185,208 @@ export default function TaskResultPage() {
     </div>
   );
 }
+
+// ── Timeline Panel ──────────────────────────────────────────────────────
+
+function TimelinePanel({ segments, collapsed, loading, onWindowSelect, profilerType }: {
+  segments: Segment[];
+  collapsed: string | null;
+  loading: boolean;
+  onWindowSelect: (start: number, end: number) => void;
+  profilerType: number;
+}) {
+  const [rangeStart, setRangeStart] = useState<number>(0);
+  const [rangeEnd, setRangeEnd] = useState<number>(0);
+
+  if (segments.length === 0) {
+    return <p style={{ color: '#8c8c8c', padding: 24, textAlign: 'center' }}>No profiling segments yet. Continuous profiling collects data every 5 minutes.</p>;
+  }
+
+  const minTs = segments[0].start_ts;
+  const maxTs = segments[segments.length - 1].end_ts;
+  const windowSize = 300; // 5 minutes
+
+  // Initialize range on first render
+  if (rangeStart === 0) {
+    const end = maxTs;
+    const start = Math.max(minTs, end - windowSize);
+    setRangeStart(start);
+    setRangeEnd(end);
+  }
+
+  const handleApply = () => {
+    onWindowSelect(rangeStart, rangeEnd);
+  };
+
+  const scaleX = (ts: number) => {
+    if (maxTs === minTs) return 0;
+    return ((ts - minTs) / (maxTs - minTs)) * 100;
+  };
+
+  const formatTime = (ts: number) => new Date(ts * 1000).toLocaleTimeString();
+
+  return (
+    <div>
+      {/* Timeline visualization */}
+      <div style={{ position: 'relative', height: 48, background: '#f5f5f5', borderRadius: 4, marginBottom: 8, overflow: 'hidden' }}>
+        {segments.map((seg, i) => (
+          <div
+            key={seg.id || i}
+            style={{
+              position: 'absolute',
+              left: `${scaleX(seg.start_ts)}%`,
+              width: `${Math.max(scaleX(seg.end_ts) - scaleX(seg.start_ts), 0.5)}%`,
+              top: 8,
+              height: 32,
+              background: '#1890ff',
+              borderRadius: 2,
+              opacity: 0.7,
+            }}
+            title={`${formatTime(seg.start_ts)} - ${formatTime(seg.end_ts)}`}
+          />
+        ))}
+        {/* Selected window highlight */}
+        <div style={{
+          position: 'absolute',
+          left: `${scaleX(rangeStart)}%`,
+          width: `${Math.max(scaleX(rangeEnd) - scaleX(rangeStart), 1)}%`,
+          top: 0,
+          height: '100%',
+          background: 'rgba(24,144,255,0.15)',
+          borderLeft: '2px solid #1890ff',
+          borderRight: '2px solid #1890ff',
+          pointerEvents: 'none',
+        }} />
+      </div>
+
+      {/* Range sliders */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, fontSize: 13 }}>
+        <label style={{ flex: 1 }}>
+          Start: {formatTime(rangeStart)}
+          <input
+            type="range"
+            min={minTs}
+            max={maxTs}
+            step={60}
+            value={rangeStart}
+            onChange={e => {
+              const v = Number(e.target.value);
+              setRangeStart(Math.min(v, rangeEnd - windowSize));
+            }}
+            style={{ width: '100%', marginLeft: 8 }}
+          />
+        </label>
+        <label style={{ flex: 1 }}>
+          End: {formatTime(rangeEnd)}
+          <input
+            type="range"
+            min={minTs}
+            max={maxTs}
+            step={60}
+            value={rangeEnd}
+            onChange={e => {
+              const v = Number(e.target.value);
+              setRangeEnd(Math.max(v, rangeStart + windowSize));
+            }}
+            style={{ width: '100%', marginLeft: 8 }}
+          />
+        </label>
+        <button
+          onClick={handleApply}
+          disabled={loading}
+          style={{
+            padding: '6px 16px', background: '#1890ff', color: '#fff',
+            border: 'none', borderRadius: 4, cursor: loading ? 'wait' : 'pointer',
+          }}
+        >
+          {loading ? 'Loading...' : 'View Window'}
+        </button>
+      </div>
+
+      {/* Merged flame graph display */}
+      {collapsed && (
+        <div style={{ border: '1px solid #f0f0f0', borderRadius: 4, padding: 16 }}>
+          <h4 style={{ margin: '0 0 8px' }}>
+            Merged Flame Graph ({formatTime(rangeStart)} &mdash; {formatTime(rangeEnd)})
+          </h4>
+          <CollapsedStacksViewer data={collapsed} profilerType={profilerType} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Collapsed Stacks Viewer (basic flame graph from text) ──────────────
+
+function CollapsedStacksViewer({ data, profilerType }: { data: string; profilerType: number }) {
+  // Parse the collapsed stacks and render a simple bar visualization
+  const lines = data.trim().split('\n').filter(l => l.trim());
+  const stacks: { stack: string; count: number }[] = [];
+  let totalCount = 0;
+
+  for (const line of lines) {
+    const lastSpace = line.lastIndexOf(' ');
+    if (lastSpace < 0) continue;
+    const stack = line.substring(0, lastSpace);
+    const count = parseInt(line.substring(lastSpace + 1), 10);
+    if (isNaN(count)) continue;
+    stacks.push({ stack, count });
+    totalCount += count;
+  }
+
+  // Sort by count descending and show top 30
+  stacks.sort((a, b) => b.count - a.count);
+  const top = stacks.slice(0, 30);
+
+  const colorMap: Record<number, string> = {
+    0: '#e74c3c',   // CPU-perf: red
+    1: '#e67e22',   // Java: orange
+    3: '#3498db',   // eBPF: blue
+  };
+  const barColor = colorMap[profilerType] || '#e74c3c';
+
+  return (
+    <div style={{ maxHeight: 500, overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid #f0f0f0', textAlign: 'left' }}>
+            <th style={{ padding: 6 }}>#</th>
+            <th style={{ padding: 6 }}>Stack</th>
+            <th style={{ padding: 6 }}>Samples</th>
+            <th style={{ padding: 6 }}>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {top.map((s, i) => {
+            const pct = totalCount > 0 ? (s.count / totalCount * 100) : 0;
+            return (
+              <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                <td style={{ padding: 6 }}>{i + 1}</td>
+                <td style={{ padding: 6, fontFamily: 'monospace', fontSize: 11, maxWidth: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.stack}>
+                  {s.stack}
+                </td>
+                <td style={{ padding: 6 }}>{s.count}</td>
+                <td style={{ padding: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 60, height: 8, background: '#f0f0f0', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: barColor }} />
+                    </div>
+                    <span>{pct.toFixed(2)}%</span>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p style={{ color: '#8c8c8c', fontSize: 12, marginTop: 8 }}>
+        Showing top 30 of {stacks.length} unique stacks | Total samples: {totalCount}
+      </p>
+    </div>
+  );
+}
+
+// ── Top N Table ─────────────────────────────────────────────────────────
 
 function TopNTable({ url }: { url: string }) {
   const [data, setData] = useState<{ func: string; self: number; inclusive: number; percentage: number }[]>([]);

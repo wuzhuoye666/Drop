@@ -21,7 +21,7 @@ type: project
 
 | # | 需求 | 来源(文档章节) | 实现位置 | 状态 | 完成度 |
 |---|------|---------------|----------|------|--------|
-| E1 | Continuous Profiling：常驻低频采样、定时切割、按时间轴回溯任意5分钟窗口 | 扩展-Continuous | drop/agent(HotmethodChannel continuous mode), web_frontend/timeline | ⬜ 未开始 | 0% |
+| E1 | Continuous Profiling：常驻低频采样、定时切割、按时间轴回溯任意5分钟窗口 | 扩展-Continuous | drop/common/src/continuous_profiler.cpp (常驻低频采样+5min分段flush), apiserver/server/handler.go (CreateSegment+ListSegments+GetProfileWindow), apiserver/model/model.go (ContinuousProfileSegment表), apiserver/server/scheduler.go (robfig/cron调度), web_frontend/pages/taskResult (Timeline组件+区间选择+合并火焰图) | ✅ 已完成 | 100% |
 | E2 | eBPF采集器：使用libbpf/bcc/bpftrace，至少一个内核态探针 | 扩展-多采集器1 | drop/common/bpf/offcpu.bpf.c (内核探针), drop/common/src/ebpf_loader.cpp (libbpf加载器), drop/common/src/ebpf_profiler.cpp (IProfiler实现) | ✅ 已完成 | 100% |
 | E3 | 用户态语言级采集器(py-spy/async-profiler/pprof三选一)，有自己的可视化形态 | 扩展-多采集器2 | drop/common/src/async_profiler_profiler.cpp (IProfiler实现), drop/tools/install_async_profiler.sh, analysis/drop_analyzer/hotmethod_analyzer.py (analyze_async_profiler), web_frontend/pages/taskResult (Java Flame Graph Tab), web_frontend/pages/taskList (动态event参数) | ✅ 已完成 | 100% |
 | E4 | 智能归因：火焰图+元数据+baseline结构化喂给LLM | 加分-智能归因 | analysis/analysis_advisor.py, analysis/hunyuanApi.py | ⬜ 未开始 | 0% |

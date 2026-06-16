@@ -85,6 +85,7 @@ export default function TaskListPage() {
             <th style={{ padding: 8 }}>TID</th>
             <th style={{ padding: 8 }}>Name</th>
             <th style={{ padding: 8 }}>Profiler</th>
+            <th style={{ padding: 8 }}>Type</th>
             <th style={{ padding: 8 }}>Target</th>
             <th style={{ padding: 8 }}>Status</th>
             <th style={{ padding: 8 }}>Analysis</th>
@@ -101,6 +102,7 @@ export default function TaskListPage() {
               </td>
               <td style={{ padding: 8 }}>{t.name}</td>
               <td style={{ padding: 8 }}>{profilerTypeName(t.profiler_type)}</td>
+              <td style={{ padding: 8 }}>{t.type === 1 ? 'Continuous' : 'Single'}</td>
               <td style={{ padding: 8 }}>{t.target_ip}</td>
               <td style={{ padding: 8 }}>
                 <span style={{ color: taskStatusColor(t.status), fontWeight: 500 }}>
@@ -116,7 +118,7 @@ export default function TaskListPage() {
             </tr>
           ))}
           {tasks.length === 0 && (
-            <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#8c8c8c' }}>No tasks yet</td></tr>
+            <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#8c8c8c' }}>No tasks yet</td></tr>
           )}
         </tbody>
       </table>
@@ -140,6 +142,17 @@ export default function TaskListPage() {
                 Task Name
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
+              </label>
+              <label style={{ fontSize: 13 }}>
+                Task Type
+                <select value={form.type} onChange={e => {
+                  const tt = Number(e.target.value);
+                  setForm({ ...form, type: tt, name: tt === 1 ? 'continuous-profile' : form.name });
+                }}
+                  style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4 }}>
+                  <option value={0}>Single-shot</option>
+                  <option value={1}>Continuous</option>
+                </select>
               </label>
               <label style={{ fontSize: 13 }}>
                 Profiler Type
@@ -166,7 +179,7 @@ export default function TaskListPage() {
                 <input type="number" value={form.pid} onChange={e => setForm({ ...form, pid: Number(e.target.value) })}
                   style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
               </label>
-              {form.profiler_type !== 3 && (
+              {form.profiler_type !== 3 && form.type !== 1 && (
                 <div style={{ display: 'flex', gap: 12 }}>
                   <label style={{ flex: 1, fontSize: 13 }}>
                     Duration (s)

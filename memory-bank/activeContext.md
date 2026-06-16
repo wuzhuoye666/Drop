@@ -9,9 +9,9 @@ type: project
 ## 当前聚焦
 
 - **组件**：全组件
-- **Phase**：Phase 6 ✅ 已完成
+- **Phase**：Phase 7 ✅ 已完成
 - **正在做**：无
-- **下一步**：Phase 7 Continuous Profiling
+- **下一步**：Phase 8 智能归因+NL (加分项)
 
 ## 当前阻塞
 
@@ -19,10 +19,10 @@ type: project
 
 ## 本次会话摘要
 
-- 完成 Phase 6 用户态语言级采集器（async-profiler/Java profiling）全部5步：
-  - Step 6.1: 创建安装脚本 install_async_profiler.sh（GitHub + Maven Central fallback）
-  - Step 6.2: 实现 AsyncProfilerProfiler C++ 类（IProfiler继承，profiler_type=1，timeout+SIGTERM/SIGKILL）
-  - Step 6.3: analysis 侧添加 analyze_async_profiler() 管线（--color java 色系）
-  - Step 6.4: Web前端——结果页根据 profiler_type=1 展示 "Java Flame Graph" Tab，新建弹窗动态参数（event选择cpu/alloc/lock/wall）
-  - Step 6.5: Dockerfile 集成安装脚本，Go handler 增加 event 字段传递
-  - Step 6.6: 8个新测试全部通过（C++ 6个 + Python 2个）
+- 完成 Phase 7 Continuous Profiling 全部5步：
+  - Step 7.1: 创建 ContinuousProfiler C++ 类，低频1Hz循环采样，内存ring buffer，stop()优雅停止
+  - Step 7.2: 每5分钟flush分段折叠栈→上传MinIO→注册PG表continuous_profile_segments(tid, start_ts, end_ts, s3_key)
+  - Step 7.3: Web前端Timeline组件——ECharts式时间轴slider + 区间选择 + 合并火焰图
+  - Step 7.4: 窗口合并API GET /tasks/:tid/profile-window?start=&end=，从MinIO下载折叠栈合并返回
+  - Step 7.5: apiserver定时任务管理——robfig/cron调度引擎，创建/暂停/恢复定时规则，自动下发continuous profiling任务
+  - 4个新Go测试全部通过，8个C++单测全过，8个Python测试全过
