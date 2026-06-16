@@ -154,6 +154,7 @@ func main() {
 		api.POST("/schedule/task", srv.CreateScheduleTask)
 		api.GET("/schedules", srv.ListSchedules)
 		api.PUT("/schedule/:tid/toggle", srv.ToggleSchedule)
+		api.DELETE("/schedule/:tid", srv.DeleteSchedule)
 
 		// Continuous Profiling Segments (read-only for users)
 		api.GET("/tasks/:tid/segments", srv.ListSegments)

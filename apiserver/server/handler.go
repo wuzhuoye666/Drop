@@ -547,6 +547,24 @@ func (s *APIServer) ToggleSchedule(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"tid": tid, "enabled": req.Enabled}})
 }
 
+func (s *APIServer) DeleteSchedule(c *gin.Context) {
+	tid := c.Param("tid")
+
+	result := s.db.Where("tid = ? AND trigger_type = ?", tid, model.TriggerCron).Delete(&model.MultiTasks{})
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"code": 4040014, "message": "schedule not found"})
+		return
+	}
+
+	// Remove from in-memory cron
+	if s.cronScheduler != nil {
+		s.cronScheduler.RemoveSchedule(tid)
+	}
+
+	s.logger.Info("schedule deleted", zap.String("tid", tid))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"tid": tid}})
+}
+
 func (s *APIServer) CreateSegment(c *gin.Context) {
 	tid := c.Param("tid")
 	var req CreateSegmentReq

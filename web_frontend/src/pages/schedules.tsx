@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { listSchedules, createScheduleTask, toggleSchedule } from '../api';
+import { listSchedules, createScheduleTask, toggleSchedule, deleteSchedule } from '../api';
 
 interface Schedule {
   tid: string;
@@ -106,6 +106,15 @@ export default function SchedulesPage() {
                     }}
                   >
                     {s.enabled ? 'Pause' : 'Resume'}
+                  </button>
+                  <button
+                    onClick={() => { if (confirm('Delete this schedule?')) deleteSchedule(s.tid).then(() => setTimeout(fetchSchedules, 300)); }}
+                    style={{
+                      padding: '4px 12px', fontSize: 12, border: '1px solid #ff4d4f',
+                      borderRadius: 4, background: '#fff', color: '#ff4d4f', cursor: 'pointer', marginLeft: 4,
+                    }}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>

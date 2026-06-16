@@ -53,6 +53,7 @@ export const createScheduleTask = (data: {
 }) => api.post('/schedule/task', data);
 export const toggleSchedule = (tid: string, enabled: boolean) =>
   api.put(`/schedule/${tid}/toggle`, { enabled });
+export const deleteSchedule = (tid: string) => api.delete(`/schedule/${tid}`);
 
 // COS files
 export const listCosFiles = (tid: string) =>

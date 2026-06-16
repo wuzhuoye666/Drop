@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import * as echarts from 'echarts';
 import { useSearchParams, Link } from 'react-router-dom';
 import { getTask, listCosFiles, listSegments, getProfileWindow } from '../api';
 import { taskStatusLabel, taskStatusColor, analysisStatusLabel, analysisStatusColor, profilerTypeName } from '../utils';
@@ -186,7 +187,7 @@ export default function TaskResultPage() {
   );
 }
 
-// ── Timeline Panel ──────────────────────────────────────────────────────
+// ── Timeline Panel with ECharts dataZoom ─────────────────────────────────
 
 function TimelinePanel({ segments, collapsed, loading, onWindowSelect, profilerType }: {
   segments: Segment[];
@@ -197,6 +198,8 @@ function TimelinePanel({ segments, collapsed, loading, onWindowSelect, profilerT
 }) {
   const [rangeStart, setRangeStart] = useState<number>(0);
   const [rangeEnd, setRangeEnd] = useState<number>(0);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const chartInstance = useRef<any>(null);
 
   if (segments.length === 0) {
     return <p style={{ color: '#8c8c8c', padding: 24, textAlign: 'center' }}>No profiling segments yet. Continuous profiling collects data every 5 minutes.</p>;
@@ -204,93 +207,117 @@ function TimelinePanel({ segments, collapsed, loading, onWindowSelect, profilerT
 
   const minTs = segments[0].start_ts;
   const maxTs = segments[segments.length - 1].end_ts;
-  const windowSize = 300; // 5 minutes
+  const windowSize = 300;
 
-  // Initialize range on first render
   if (rangeStart === 0) {
     const end = maxTs;
     const start = Math.max(minTs, end - windowSize);
-    setRangeStart(start);
-    setRangeEnd(end);
+    // Use setTimeout to avoid React render-phase state update
+    setTimeout(() => { setRangeStart(start); setRangeEnd(end); }, 0);
   }
 
   const handleApply = () => {
     onWindowSelect(rangeStart, rangeEnd);
   };
 
-  const scaleX = (ts: number) => {
-    if (maxTs === minTs) return 0;
-    return ((ts - minTs) / (maxTs - minTs)) * 100;
-  };
-
   const formatTime = (ts: number) => new Date(ts * 1000).toLocaleTimeString();
+
+  // ECharts initialization
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const chart = echarts.init(chartRef.current);
+    chartInstance.current = chart;
+
+    // Build series data: each segment is a bar on the timeline
+    const seriesData = segments.map((seg, i) => [
+      seg.start_ts,
+      seg.end_ts - seg.start_ts,
+      seg.start_ts,
+      `${formatTime(seg.start_ts)} - ${formatTime(seg.end_ts)}`
+    ]);
+
+    const option = {
+      tooltip: {
+        formatter: (params: any) => params.data[3],
+      },
+      grid: { top: 10, bottom: 80, left: 60, right: 30 },
+      xAxis: {
+        type: 'time',
+        min: new Date(minTs * 1000),
+        max: new Date(maxTs * 1000),
+        axisLabel: { fontSize: 11 },
+      },
+      yAxis: { type: 'category', data: ['segments'], axisLabel: { show: false } },
+      series: [{
+        type: 'custom',
+        renderItem: (_params: any, api: any) => {
+          const start = api.value(0);
+          const duration = api.value(1);
+          const startPos = api.coord([start, 0]);
+          const endPos = api.coord([start + duration, 0]);
+          const height = 32;
+          return {
+            type: 'rect',
+            transition: ['shape'],
+            shape: { x: startPos[0], y: startPos[1] - height / 2, width: Math.max(endPos[0] - startPos[0], 2), height },
+            style: { fill: '#1890ff', opacity: 0.7 },
+          };
+        },
+        data: seriesData,
+      }],
+      dataZoom: [{
+        type: 'slider',
+        xAxisIndex: 0,
+        start: 0,
+        end: 100,
+        minHeight: 30,
+        labelFormatter: (val: number) => formatTime(val / 1000),
+      }, {
+        type: 'inside',
+        xAxisIndex: 0,
+      }],
+    };
+
+    chart.setOption(option);
+
+    // Sync dataZoom with state
+    chart.on('datazoom', (params: any) => {
+      const opt = chart.getOption();
+      const dz = (opt.dataZoom as any[])[0];
+      if (dz && dz.startValue != null && dz.endValue != null) {
+        const s = Math.floor(dz.startValue / 1000);
+        const e = Math.floor(dz.endValue / 1000);
+        setRangeStart(s);
+        setRangeEnd(e);
+      }
+    });
+
+    const onResize = () => chart.resize();
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      chart.dispose();
+    };
+  }, [segments]);
+
+  // Update chart dataZoom when range changes externally
+  useEffect(() => {
+    if (!chartInstance.current || rangeStart === 0) return;
+    chartInstance.current.dispatchAction({
+      type: 'dataZoom',
+      startValue: rangeStart * 1000,
+      endValue: rangeEnd * 1000,
+    });
+  }, [rangeStart, rangeEnd]);
 
   return (
     <div>
-      {/* Timeline visualization */}
-      <div style={{ position: 'relative', height: 48, background: '#f5f5f5', borderRadius: 4, marginBottom: 8, overflow: 'hidden' }}>
-        {segments.map((seg, i) => (
-          <div
-            key={seg.id || i}
-            style={{
-              position: 'absolute',
-              left: `${scaleX(seg.start_ts)}%`,
-              width: `${Math.max(scaleX(seg.end_ts) - scaleX(seg.start_ts), 0.5)}%`,
-              top: 8,
-              height: 32,
-              background: '#1890ff',
-              borderRadius: 2,
-              opacity: 0.7,
-            }}
-            title={`${formatTime(seg.start_ts)} - ${formatTime(seg.end_ts)}`}
-          />
-        ))}
-        {/* Selected window highlight */}
-        <div style={{
-          position: 'absolute',
-          left: `${scaleX(rangeStart)}%`,
-          width: `${Math.max(scaleX(rangeEnd) - scaleX(rangeStart), 1)}%`,
-          top: 0,
-          height: '100%',
-          background: 'rgba(24,144,255,0.15)',
-          borderLeft: '2px solid #1890ff',
-          borderRight: '2px solid #1890ff',
-          pointerEvents: 'none',
-        }} />
-      </div>
+      {/* ECharts timeline with dataZoom slider */}
+      <div ref={chartRef} style={{ width: '100%', height: 200 }} />
 
-      {/* Range sliders */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, fontSize: 13 }}>
-        <label style={{ flex: 1 }}>
-          Start: {formatTime(rangeStart)}
-          <input
-            type="range"
-            min={minTs}
-            max={maxTs}
-            step={60}
-            value={rangeStart}
-            onChange={e => {
-              const v = Number(e.target.value);
-              setRangeStart(Math.min(v, rangeEnd - windowSize));
-            }}
-            style={{ width: '100%', marginLeft: 8 }}
-          />
-        </label>
-        <label style={{ flex: 1 }}>
-          End: {formatTime(rangeEnd)}
-          <input
-            type="range"
-            min={minTs}
-            max={maxTs}
-            step={60}
-            value={rangeEnd}
-            onChange={e => {
-              const v = Number(e.target.value);
-              setRangeEnd(Math.max(v, rangeStart + windowSize));
-            }}
-            style={{ width: '100%', marginLeft: 8 }}
-          />
-        </label>
+      {/* Window info + Apply button */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, marginBottom: 16, fontSize: 13 }}>
+        <span>Selected window: {formatTime(rangeStart)} — {formatTime(rangeEnd)}</span>
         <button
           onClick={handleApply}
           disabled={loading}
@@ -299,7 +326,7 @@ function TimelinePanel({ segments, collapsed, loading, onWindowSelect, profilerT
             border: 'none', borderRadius: 4, cursor: loading ? 'wait' : 'pointer',
           }}
         >
-          {loading ? 'Loading...' : 'View Window'}
+          {loading ? 'Loading...' : 'View Flame Graph'}
         </button>
       </div>
 
