@@ -60,6 +60,7 @@ type HotmethodTask struct {
 	BeginTime      *time.Time     `json:"begin_time,omitempty"`
 	EndTime        *time.Time     `json:"end_time,omitempty"`
 	MasterTaskTid  string         `gorm:"size:64" json:"master_task_tid,omitempty"`
+	CosKey         string         `gorm:"size:512" json:"cos_key,omitempty"`
 }
 
 func (HotmethodTask) TableName() string { return "hotmethod_task" }

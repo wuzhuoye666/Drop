@@ -8,6 +8,9 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "profiler.h"
+#include "profiler_factory.h"
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -35,6 +38,7 @@ DEFINE_string(hostname, "", "Agent hostname (auto-detected if empty)");
 DEFINE_string(ip, "", "Agent IP address (auto-detected if empty)");
 DEFINE_string(uid, "", "Agent unique ID (auto-generated if empty)");
 DEFINE_string(agent_version, "0.1.0", "Agent version string");
+DEFINE_string(apiserver_addr, "http://127.0.0.1:8191", "apiserver HTTP address for file uploads");
 
 // ── Worker state ────────────────────────────────────────────────────
 struct WorkerState {
@@ -148,6 +152,50 @@ static drop::common::PidStats ComputePidStats() {
           << " write=" << cur.write_kbs << "KB/s";
 
   return ps;
+}
+
+// ── Upload file to apiserver via curl multipart POST ───────────────
+static bool UploadFileToAPI(const std::string& tid,
+                             const std::string& filepath,
+                             std::string* cos_key) {
+  // Build URL: POST /api/v1/tasks/<tid>/upload/<filename>
+  std::string filename = filepath.substr(filepath.rfind('/') + 1);
+  std::string url = FLAGS_apiserver_addr + "/api/v1/tasks/" + tid + "/upload/" + filename;
+
+  // Use curl multipart/form-data upload
+  std::string cmd = "curl -sf -o /dev/null -w '%{http_code}' "
+                    "-F 'file=@" + filepath + "' "
+                    "'" + url + "' 2>/dev/null";
+
+  // Instead of system(), use popen (still spawns a shell but avoids system())
+  // For production, we'd use libcurl — this is acceptable for MVP
+  FILE* pipe = popen(cmd.c_str(), "r");
+  if (!pipe) {
+    *cos_key = "popen failed";
+    return false;
+  }
+
+  char buf[64];
+  std::string result;
+  while (fgets(buf, sizeof(buf), pipe)) {
+    result += buf;
+  }
+  int rc = pclose(pipe);
+
+  // Trim newline
+  while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
+    result.pop_back();
+
+  int http_code = 0;
+  try { http_code = std::stoi(result); } catch (...) {}
+
+  if (rc != 0 || http_code != 200) {
+    *cos_key = "upload HTTP " + result + " (rc=" + std::to_string(rc) + ")";
+    return false;
+  }
+
+  *cos_key = tid + "/" + filename;
+  return true;
 }
 
 // ── Daemonize ───────────────────────────────────────────────────────
@@ -290,7 +338,7 @@ static void HeartbeatThread(std::shared_ptr<grpc::Channel> channel) {
   }
 }
 
-// ── Worker thread (simulated collection for Phase 3) ────────────────
+// ── Worker thread (real profiler execution) ────────────────────────
 static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
   auto hm_stub = drop::hotmethod::Hotmethod::NewStub(channel);
 
@@ -305,19 +353,30 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
     }
 
     const std::string& tid = task.task_id();
-    int duration = task.sample_argv().duration();
-    if (duration <= 0) duration = 10;
+    const std::string output_dir = "/tmp/drop_" + tid;
 
-    LOG(INFO) << "Task " << tid << " started (simulated, duration=" << duration << "s)";
+    LOG(INFO) << "Task " << tid << " started";
 
-    // Simulate collection: sleep for the duration
-    // In Phase 4 this will fork+exec perf / eBPF
-    for (int i = 0; i < duration; ++i) {
-      if (g_worker.shutdown) break;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+    // Create the appropriate profiler
+    auto profiler = drop::CreateProfiler(task.profiler_type());
+    if (!profiler) {
+      // Unsupported profiler type — report failure
+      grpc::ClientContext ctx;
+      ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+      drop::hotmethod::TaskResult result;
+      result.set_task_id(tid);
+      result.set_error_message("unsupported profiler_type=" + std::to_string(task.profiler_type()));
+      google::protobuf::Empty empty;
+      hm_stub->NotifyResult(&ctx, result, &empty);
+      LOG(ERROR) << "Task " << tid << ": unknown profiler_type";
+      continue;
     }
 
-    LOG(INFO) << "Task " << tid << " finished (simulated)";
+    // Run collection
+    std::string error_msg;
+    bool ok = profiler->record(task, output_dir, &error_msg);
+
+    LOG(INFO) << "Task " << tid << " " << (ok ? "finished" : "failed: " + error_msg);
 
     // Report result back to server
     grpc::ClientContext ctx;
@@ -325,7 +384,28 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
 
     drop::hotmethod::TaskResult result;
     result.set_task_id(tid);
-    // No error = success; no cos_key for simulated task (Phase 4 adds real upload)
+    if (!ok) {
+      result.set_error_message(error_msg);
+    } else {
+      // Upload collected files to MinIO via apiserver
+      auto files = profiler->collect_result();
+      std::string uploaded_cos_key;
+      bool upload_ok = true;
+      for (size_t i = 0; i < files.size(); ++i) {
+        std::string filepath = output_dir + "/" + files[i];
+        std::string this_cos_key;
+        if (!UploadFileToAPI(tid, filepath, &this_cos_key)) {
+          LOG(ERROR) << "Failed to upload " << filepath << ": " << this_cos_key;
+          upload_ok = false;
+          result.set_error_message("upload failed: " + this_cos_key);
+          break;
+        }
+        if (i == 0) uploaded_cos_key = this_cos_key;
+      }
+      if (upload_ok) {
+        result.set_cos_key(uploaded_cos_key);
+      }
+    }
 
     google::protobuf::Empty empty;
     auto status = hm_stub->NotifyResult(&ctx, result, &empty);

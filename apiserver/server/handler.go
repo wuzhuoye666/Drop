@@ -524,3 +524,62 @@ func (s *APIServer) dispatchTask(tid string, req CreateTaskReq) {
 
 	s.logger.Info("task dispatched to drop_server", zap.String("tid", tid), zap.String("target_ip", req.TargetIP))
 }
+
+// ==================== File Upload ====================
+
+// UploadTaskFile accepts a multipart file upload for a task and stores it in MinIO.
+// The cos_key format is: <tid>/<filename>
+func (s *APIServer) UploadTaskFile(c *gin.Context) {
+	tid := c.Param("tid")
+	filename := c.Param("filename")
+
+	if tid == "" || filename == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000100, "message": "tid and filename required"})
+		return
+	}
+
+	// Strip leading slash from filename if present
+	filename = strings.TrimPrefix(filename, "/")
+
+	if s.storage == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 5030100, "message": "storage not configured"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000101, "message": "file upload failed: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	cosKey := tid + "/" + filename
+	ctx := context.Background()
+
+	// Detect content type from extension
+	contentType := "application/octet-stream"
+	if strings.HasSuffix(filename, ".svg") {
+		contentType = "image/svg+xml"
+	} else if strings.HasSuffix(filename, ".json") {
+		contentType = "application/json"
+	} else if strings.HasSuffix(filename, ".txt") {
+		contentType = "text/plain"
+	}
+
+	if err := s.storage.Put(ctx, cosKey, file, header.Size, contentType); err != nil {
+		s.logger.Error("upload to minio failed", zap.String("key", cosKey), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 5000100, "message": "storage upload failed"})
+		return
+	}
+
+	// Update cos_key on the task if not set
+	var task model.HotmethodTask
+	if err := s.db.Where("tid = ?", tid).First(&task).Error; err == nil {
+		if task.CosKey == "" {
+			s.db.Model(&task).Update("cos_key", cosKey)
+		}
+	}
+
+	s.logger.Info("file uploaded", zap.String("tid", tid), zap.String("key", cosKey), zap.Int64("size", header.Size))
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"cos_key": cosKey}})
+}

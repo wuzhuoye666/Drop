@@ -92,6 +92,9 @@ func main() {
 	// Create APIServer
 	srv := server.New(db, grpcConn, objStore, cfg, logger)
 
+	// Start analysis scheduler
+	srv.StartAnalysisScheduler()
+
 	// Create Gin router
 	if cfg.Server.DevMode {
 		gin.SetMode(gin.TestMode)
@@ -109,6 +112,9 @@ func main() {
 
 	// Auth check
 	r.GET("/api/v1/auth/check", srv.AuthCheck)
+
+	// Agent internal endpoints (no cookie auth, outside api group)
+	r.POST("/api/v1/tasks/:tid/upload/*filename", srv.UploadTaskFile)
 
 	// API group with auth middleware
 	api := r.Group("/api/v1")

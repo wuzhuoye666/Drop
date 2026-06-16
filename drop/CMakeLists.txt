@@ -54,9 +54,11 @@ target_link_libraries(drop_proto PUBLIC
   gRPC::grpc++_reflection
 )
 
-# ── Shared source (task_queue, PG store) ──────────────────────────
+# ── Shared source (task_queue, PG store, profilers) ──────────────
 add_library(drop_common
   common/src/task_queue.cpp
+  common/src/perf_profiler.cpp
+  common/src/profiler_factory.cpp
 )
 target_include_directories(drop_common PUBLIC
   ${GEN_DIR}
@@ -80,5 +82,5 @@ target_include_directories(drop_server PRIVATE ${GEN_DIR})
 add_executable(drop_agent
   agent/main.cpp
 )
-target_link_libraries(drop_agent PRIVATE drop_proto glog::glog gflags)
+target_link_libraries(drop_agent PRIVATE drop_common glog::glog gflags)
 target_include_directories(drop_agent PRIVATE ${GEN_DIR})
