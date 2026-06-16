@@ -1,0 +1,54 @@
+# Build artifacts
+drop/build/
+*.o
+*.a
+*.so
+*.dylib
+
+# Generated protobuf files (rebuild with make proto)
+drop/common/proto/*.pb.cc
+drop/common/proto/*.pb.h
+drop/common/proto/*.grpc.pb.cc
+drop/common/proto/*.grpc.pb.h
+apiserver/proto/*.pb.go
+apiserver/proto/*_grpc.pb.go
+
+# Go
+apiserver/apiserver
+*.exe
+
+# Node
+node_modules/
+web_frontend/node_modules/
+web_frontend/dist/
+web_frontend/build/
+
+# Python
+analysis/__pycache__/
+analysis/**/__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Test coverage
+*.out
+coverage/

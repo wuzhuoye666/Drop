@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package drop.hotmethod;
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/drop/apiserver/proto;proto";
+
+service Hotmethod {
+  // Server pushes task to Agent (synchronous call from Agent side)
+  rpc Collect(Target)            returns (google.protobuf.Empty);
+  // Agent reports result back to Server
+  rpc NotifyResult(TaskResult)   returns (google.protobuf.Empty);
+}
+
+// Target for a collection — used by server to push task
+message Target {
+  drop.common.RecordArgv sample_argv = 1;
+  uint32 profiler_type               = 2;
+  string task_id                     = 3;
+}
+
+message TaskDesc {
+  string  task_id        = 1;
+  uint32  task_type      = 2;   // 0=generic / 1=Java / 2=Tracing / 4=MemCheck / 6=JavaHeap
+  uint32  profiler_type  = 3;   // 0=perf / 1=async-profiler / 2=pprof
+  drop.common.RecordArgv sample_argv = 4;
+  string  container_name = 5;
+  uint32  container_type = 6;
+  uint32  timeout_sec    = 7;
+  drop.common.CosConfig cos_config   = 8;
+  string  script_content = 9;   // only for ScriptExec tasks
+}
+
+message TaskResult {
+  string task_id       = 1;
+  string error_message = 2;   // empty string = success
+  drop.common.File file = 3;  // inline small file
+  string cos_key       = 4;   // COS key for large file
+  repeated drop.common.PidStats self_pstats     = 5;
+  repeated drop.common.PidStats children_pstats = 6;
+}

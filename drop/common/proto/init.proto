@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package drop.init;
+
+import "common.proto";
+
+option go_package = "github.com/drop/apiserver/proto;proto";
+
+service Init {
+  // Agent registers itself at startup
+  rpc RegisterAgent(RegisterAgentRequest)   returns (RegisterAgentResponse);
+  // Agent fetches COS/S3 configuration
+  rpc FetchConfig(FetchConfigRequest)       returns (FetchConfigResponse);
+}
+
+message RegisterAgentRequest {
+  string host_name     = 1;
+  string ip_addr       = 2;
+  string uid           = 3;
+  string agent_version = 4;
+}
+
+message RegisterAgentResponse {
+  bool   success    = 1;
+  string message    = 2;
+  string uid        = 3;  // assigned or confirmed UID
+}
+
+message FetchConfigRequest {
+  string uid = 1;
+}
+
+message FetchConfigResponse {
+  drop.common.CosConfig cos_config = 1;
+  string log_level                 = 2;  // DEBUG / INFO / WARNING
+}

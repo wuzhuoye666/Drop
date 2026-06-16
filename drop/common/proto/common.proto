@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package drop.common;
+
+option go_package = "github.com/drop/apiserver/proto;proto";
+
+// Process resource statistics
+message PidStats {
+  string name         = 1;
+  int32  pid          = 2;
+  uint64 utime        = 3;  // user time in clock ticks
+  uint64 stime        = 4;  // system time in clock ticks
+  uint64 rss          = 5;  // resident set size in pages
+  double cpu_percent  = 6;
+  uint64 rss_mb       = 7;
+  uint64 read_kbs     = 8;
+  uint64 write_kbs    = 9;
+}
+
+// Inline small file attachment
+message File {
+  string name    = 1;
+  bytes  content = 2;
+}
+
+// Object storage configuration (temporary credentials)
+message CosConfig {
+  string region    = 1;
+  string bucket    = 2;
+  string tmp_ak    = 3;  // temporary access key
+  string tmp_sk    = 4;  // temporary secret key
+  string tmp_token = 5;  // temporary security token
+  int64  expire_ts = 6;  // credential expiration timestamp
+}
+
+// Sampling arguments for perf-type tasks
+message RecordArgv {
+  uint32 hz         = 1;   // sampling frequency Hz
+  uint64 duration   = 2;   // collection duration in seconds
+  int32  pid        = 3;   // target process PID
+  string callgraph  = 4;   // fp / dwarf / lbr
+  bool   subprocess = 5;   // include child processes
+  string event      = 6;   // cpu-cycles / cache-misses / ...
+}
