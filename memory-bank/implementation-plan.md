@@ -34,11 +34,11 @@ type: project
 
 ---
 
-## Phase 1：脚手架与协议 `[ ]`
+## Phase 1：脚手架与协议 `[x]`
 
 **目标**：空壳项目全部编译通过，4个.proto定义完毕，数据库和MinIO可启动
 
-### Step 1.1 `[ ]` 创建monorepo目录结构
+### Step 1.1 `[x]` 创建monorepo目录结构
 - 按 `PROJECT_STRUCTURE.md` 创建全部目录骨架
 - 每个空目录放 `.gitkeep`
 - 初始化 `git init`，创建 `.gitignore`（忽略build/、node_modules/、__pycache__/、*.pyc、.env）
@@ -48,7 +48,7 @@ type: project
 2. `find . -empty -type d` 无输出（所有空目录有.gitkeep）
 3. `git ls-files | wc -l` ≥ 5（至少有.gitignore和几个.gitkeep被追踪）
 
-### Step 1.2 `[ ]` 编写5个.proto文件
+### Step 1.2 `[x]` 编写5个.proto文件
 - `common.proto`: PidStats / File / CosConfig / RecordArgv 消息
 - `healthcheck.proto`: HealthCheck.Do RPC，HealthCheckRequest/Response
 - `hotmethod.proto`: TaskDesc / TaskResult / Hotmethod.Collect + NotifyResult RPC
@@ -62,7 +62,7 @@ type: project
 3. `ls apiserver/proto/*.pb.go apiserver/proto/*_grpc.pb.go` 文件存在
 4. 人工抽样：`grep "taskID" drop/common/proto/hotmethod.pb.h` 命中（关键字段名与文档一致）
 
-### Step 1.3 `[ ]` C++ CMakeLists.txt 编译空壳二进制
+### Step 1.3 `[x]` C++ CMakeLists.txt 编译空壳二进制
 - `drop_server main.cpp`: 注册4个gRPC service（空实现返回 UNIMPLEMENTED）
 - `drop_agent main.cpp`: 解析 gflags → 打印配置 → 退出
 - CMake: `find_package(gRPC REQUIRED)`, `find_package(Protobuf REQUIRED)`
@@ -74,7 +74,7 @@ type: project
 3. `./drop_agent -config /dev/null` 打印参数后退出码 0
 4. `grpcurl -plaintext localhost:50051 list` 能列出4个service名
 
-### Step 1.4 `[ ]` Go apiserver 空壳启动
+### Step 1.4 `[x]` Go apiserver 空壳启动
 - `go mod init` + require Gin/Viper/Zap/grpc-go
 - `main.go`: Viper加载配置 → Gin router → `/healthz` 返回 `{"status":"ok"}`
 - Zap logger初始化
@@ -85,7 +85,7 @@ type: project
 3. `curl -sf http://localhost:8191/healthz | jq .status` 输出 `"ok"`
 4. 日志输出为JSON格式（包含 level/msg/time 字段）
 
-### Step 1.5 `[ ]` React项目初始化
+### Step 1.5 `[x]` React项目初始化
 - 用 Vite + React + TypeScript 初始化（或 CRA）
 - 安装依赖：react-router, zustand, axios, d3, tdesign-react
 - `npm run build` 成功
@@ -95,7 +95,7 @@ type: project
 2. `ls dist/index.html` 存在（Vite）或 `ls build/index.html`（CRA）
 3. 用浏览器打开 `npm run dev` 能看到默认页面
 
-### Step 1.6 `[ ]` docker-compose.yml 骨架
+### Step 1.6 `[x]` docker-compose.yml 骨架
 - postgres:14 服务 + healthcheck (`pg_isready`)
 - minio 服务 + healthcheck + console(:9001)
 - 配好 volume 持久化 + 网络
@@ -107,7 +107,7 @@ type: project
 4. 浏览器访问 `http://localhost:9001` 能看到 MinIO Console 登录页
 5. `docker compose down -v` 清理干净
 
-### Step 1.7 `[ ]` Makefile 全局目标
+### Step 1.7 `[x]` Makefile 全局目标
 - `make proto` → 编译所有.proto
 - `make build` → 编译4个组件
 - `make test` → 运行所有单测
