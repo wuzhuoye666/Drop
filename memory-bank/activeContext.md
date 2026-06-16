@@ -10,10 +10,10 @@ type: project
 
 ## 当前聚焦
 
-- **组件**：drop_server + drop_agent (C++) + apiserver (Go)
-- **Phase**：Phase 3 ✅ 已完成
-- **正在做**：已完成 Phase 3 全部7步验收
-- **下一步**：开始 Phase 4 Step 4.1 — PerfProfiler采集器实现
+- **组件**：全组件 (C++ agent/server + Go apiserver + Python analysis + React frontend)
+- **Phase**：Phase 4 ✅ 已完成
+- **正在做**：Phase 4 全部9步验收通过
+- **下一步**：开始 Phase 5 Step 5.1 — eBPF内核态探针
 
 ## 当前阻塞
 
@@ -21,21 +21,21 @@ type: project
 
 ## 本次会话需注意
 
-- C++ gflags `DEFINE_string(version, ...)` 与 gflags 内置 `--version` 冲突，改名 `DEFINE_string(agent_version, ...)`
-- `google::InitGoogleLogging` 必须在 `Daemonize()` 之后调用，否则 fd 0/1/2 被关闭后 glog 无法写入文件
-- daemonize 前设置 `FLAGS_log_dir="/tmp"` 和 `FLAGS_logbufsecs=0` 确保日志立即写入文件
-- PG `ON CONFLICT (ip_addr)` 需要唯一索引，GORM soft delete 的部分索引不满足要求
-- agent_info 表的 `last_heartbeat_at` 列实际名为 `last_hb`（GORM 字段名映射）
-- NotifyResult 直接设 DONE 会跳过中间状态导致状态机拒绝；必须按 RUNNING→UPLOADING→DONE 顺序迁移
-- apiserver 启动后如果 drop_server 未就绪，gRPC 连接会失败标记任务 FAILED；需要确保服务启动顺序
+- PerfProfiler fallback: `-p <pid>` 失败时自动回退到 system-wide perf（容器 PID namespace 限制）
+- PerfProfiler record() 使用 fork+execvp 禁止 system() 调用
+- 超时机制：setpgid → SIGTERM → 5s → SIGKILL → waitpid 回收
+- apiserver upload endpoint `/api/v1/tasks/:tid/upload/*filename` 不需要 cookie auth
+- analysis hotmethod_analyzer.py 完整链路: PG→MinIO下载→perf script→stackcollapse→flamegraph.pl→topN→上传MinIO
+- apiserver 分析调度器每10s扫描 status=3 DONE 且 analysis_status=0 的任务，spawn python 子进程
+- agent upload 通过 popen+curl multipart/form-data 上传到 apiserver（MVP 方案，生产可换 libcurl）
+- PG hotmethod_task 新增 cos_key 字段 (size 512)
+- 前端 vite proxy /api → apiserver:8191
 
 ## 上次会话摘要
 
-- 完成 Phase 3 全部7个Step
-- drop_server: 4个gRPC服务完整实现（HealthCheck.Do 心跳+分发任务、Hotmethod.NotifyResult 状态落库、Control.CreateTask 任务入队、StatAgent 查询、Init.RegisterAgent 注册）
-- drop_agent: 心跳线程 1Hz + 工作线程分离、守护化(daemonize)、自监控 PidStats(cpu%/rss_mb/read_kbs/write_kbs)、信号处理优雅退出
-- apiserver: dispatchTask 真正调用 gRPC ControlService.CreateTask，RetryTask 重新分发
-- PG集成：agent_info upsert、task_status 事务迁移（SELECT FOR UPDATE）、agent_audit_log 审计
-- 状态机验证：PENDING→RUNNING→UPLOADING→DONE 完整链路，task_status_history 每次4条审计记录
-- 离线检测：30s无心跳标记 offline + 审计日志，上线恢复也写审计
-- C++ CMake 从 C++14 升级至 C++17，新增 pkg-config 查找 libpq
+- 完成 Phase 4 全部9个Step
+- PerfProfiler: IProfiler接口 + PerfProfiler实现 fork+execvp perf record + 超时杀进程机制 + PID namespace fallback
+- Agent上传: 采集后 curl multipart POST 到 apiserver upload endpoint → MinIO 存储
+- analysis: hotmethod_analyzer.py 完整链路 (PG参数+MinIO下载→perf script→stackcollapse→flamegraph→topJSON→上传)
+- apiserver: upload endpoint + analysis scheduler (10s轮询)
+- 前端: 首页Agent列表 + 任务列表+新建采样弹窗+状态轮询(3s) + 任务详情(火焰图iframe+TopN表格+AI Tab)
