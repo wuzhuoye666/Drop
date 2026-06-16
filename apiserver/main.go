@@ -10,7 +10,8 @@ import (
 	"github.com/drop/apiserver/config"
 	"github.com/drop/apiserver/middleware"
 	"github.com/drop/apiserver/model"
-	"github.com/drop/apiserver/pkg/storage/minio"
+	"github.com/drop/apiserver/pkg/storage"
+	miniostore "github.com/drop/apiserver/pkg/storage/minio"
 	"github.com/drop/apiserver/server"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -78,16 +79,18 @@ func main() {
 	}
 
 	// Initialize MinIO storage
-	var storage *minio.Storage
+	var objStore storage.Storage
 	if cfg.S3.Endpoint != "" {
-		storage, err = minio.NewStorage(cfg.S3, logger)
+		minioStore, err := miniostore.NewStorage(cfg.S3, logger)
 		if err != nil {
 			logger.Warn("minio init failed, storage unavailable", zap.Error(err))
+		} else {
+			objStore = minioStore
 		}
 	}
 
 	// Create APIServer
-	srv := server.New(db, grpcConn, storage, cfg, logger)
+	srv := server.New(db, grpcConn, objStore, cfg, logger)
 
 	// Create Gin router
 	if cfg.Server.DevMode {
@@ -139,8 +142,6 @@ func main() {
 		// Schedule
 		api.POST("/schedule/task", srv.CreateScheduleTask)
 	}
-	_ = fmt.Sprintf("%v", rate.Every(time.Second)) // ensure rate import
-
 	addr := cfg.Server.Port
 	logger.Info("apiserver starting", zap.String("addr", addr))
 	if err := r.Run(addr); err != nil {

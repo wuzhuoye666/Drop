@@ -9,18 +9,22 @@ import (
 	"time"
 
 	"github.com/drop/apiserver/config"
+	"github.com/drop/apiserver/pkg/storage"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.uber.org/zap"
 )
 
-// Storage implements object storage via MinIO.
+// Storage implements storage.Storage via MinIO.
 type Storage struct {
 	client   *minio.Client
 	bucket   string
 	preSign  time.Duration
 	logger   *zap.Logger
 }
+
+// Verify interface compliance at compile time.
+var _ storage.Storage = (*Storage)(nil)
 
 // NewStorage creates a MinIO client and ensures the bucket exists.
 func NewStorage(cfg config.S3Config, logger *zap.Logger) (*Storage, error) {

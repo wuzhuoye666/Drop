@@ -6,7 +6,7 @@ import (
 
 	"github.com/drop/apiserver/config"
 	"github.com/drop/apiserver/model"
-	"github.com/drop/apiserver/pkg/storage/minio"
+	"github.com/drop/apiserver/pkg/storage"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
@@ -16,13 +16,13 @@ import (
 type APIServer struct {
 	db      *gorm.DB
 	grpcCC  *grpc.ClientConn
-	storage *minio.Storage
+	storage storage.Storage
 	cfg     *config.Config
 	logger  *zap.Logger
 }
 
 // New creates an APIServer.
-func New(db *gorm.DB, cc *grpc.ClientConn, storage *minio.Storage, cfg *config.Config, logger *zap.Logger) *APIServer {
+func New(db *gorm.DB, cc *grpc.ClientConn, storage storage.Storage, cfg *config.Config, logger *zap.Logger) *APIServer {
 	return &APIServer{
 		db:      db,
 		grpcCC:  cc,

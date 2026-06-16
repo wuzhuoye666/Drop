@@ -14,11 +14,11 @@ import (
 func TestMinIOStorage(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	cfg := config.S3Config{
-		Endpoint:  "127.0.0.1:9000",
-		AccessKey: "minioadmin",
-		SecretKey: "minioadmin",
-		Bucket:    "drop-data-test",
-		UseSSL:    false,
+		Endpoint:   "127.0.0.1:9000",
+		AccessKey:  "minioadmin",
+		SecretKey:  "minioadmin",
+		Bucket:     "drop-data-test",
+		UseSSL:     false,
 		PreSignExp: 3600,
 	}
 
