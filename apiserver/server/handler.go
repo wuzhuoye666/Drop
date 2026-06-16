@@ -26,6 +26,7 @@ type CreateTaskReq struct {
 	PID          int    `json:"pid"`
 	Duration     int    `json:"duration"` // seconds
 	Hz           int    `json:"hz"`       // sample rate
+	Event        string `json:"event"`    // async-profiler event: cpu/alloc/lock/wall
 }
 
 type CreateGroupReq struct {
@@ -499,6 +500,7 @@ func (s *APIServer) dispatchTask(tid string, req CreateTaskReq) {
 				Hz:       uint32(req.Hz),
 				Duration: uint64(req.Duration),
 				Pid:      int32(req.PID),
+				Event:    req.Event,
 			},
 		},
 	}

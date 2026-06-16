@@ -23,6 +23,7 @@ interface CreateForm {
   pid: number;
   duration: number;
   hz: number;
+  event: string;
 }
 
 const defaultForm: CreateForm = {
@@ -33,6 +34,7 @@ const defaultForm: CreateForm = {
   pid: 0,
   duration: 10,
   hz: 99,
+  event: '',
 };
 
 export default function TaskListPage() {
@@ -141,7 +143,11 @@ export default function TaskListPage() {
               </label>
               <label style={{ fontSize: 13 }}>
                 Profiler Type
-                <select value={form.profiler_type} onChange={e => setForm({ ...form, profiler_type: Number(e.target.value) })}
+                <select value={form.profiler_type} onChange={e => {
+                  const pt = Number(e.target.value);
+                  const nameMap: Record<number, string> = { 0: 'cpu-profile', 1: 'java-profile', 2: 'go-profile', 3: 'ebpf-offcpu' };
+                  setForm({ ...form, profiler_type: pt, name: nameMap[pt] || 'profile', event: pt === 1 ? 'cpu' : '' });
+                }}
                   style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4 }}>
                   <option value={0}>CPU-perf</option>
                   <option value={1}>Java-async-profiler</option>
@@ -160,18 +166,34 @@ export default function TaskListPage() {
                 <input type="number" value={form.pid} onChange={e => setForm({ ...form, pid: Number(e.target.value) })}
                   style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
               </label>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <label style={{ flex: 1, fontSize: 13 }}>
-                  Duration (s)
-                  <input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: Number(e.target.value) })}
-                    style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
+              {form.profiler_type !== 3 && (
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <label style={{ flex: 1, fontSize: 13 }}>
+                    Duration (s)
+                    <input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: Number(e.target.value) })}
+                      style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 13 }}>
+                    {form.profiler_type === 1 ? 'Interval (ns)' : 'Frequency (Hz)'}
+                    <input type="number" value={form.hz} onChange={e => setForm({ ...form, hz: Number(e.target.value) })}
+                      placeholder={form.profiler_type === 1 ? 'e.g. 10000000' : 'e.g. 99'}
+                      style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
+                  </label>
+                </div>
+              )}
+              {form.profiler_type === 1 && (
+                <label style={{ fontSize: 13 }}>
+                  Event
+                  <select value={form.event} onChange={e => setForm({ ...form, event: e.target.value })}
+                    style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4 }}>
+                    <option value="cpu">cpu (default)</option>
+                    <option value="alloc">alloc</option>
+                    <option value="lock">lock</option>
+                    <option value="wall">wall</option>
+                    <option value="itimer">itimer</option>
+                  </select>
                 </label>
-                <label style={{ flex: 1, fontSize: 13 }}>
-                  Frequency (Hz)
-                  <input type="number" value={form.hz} onChange={e => setForm({ ...form, hz: Number(e.target.value) })}
-                    style={{ width: '100%', padding: 6, marginTop: 2, border: '1px solid #d9d9d9', borderRadius: 4, boxSizing: 'border-box' }} />
-                </label>
-              </div>
+              )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button onClick={() => setShowModal(false)}

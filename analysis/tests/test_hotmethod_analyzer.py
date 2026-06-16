@@ -9,7 +9,7 @@ import pytest
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from drop_analyzer.hotmethod_analyzer import parse_topn, analyze_ebpf
+from drop_analyzer.hotmethod_analyzer import parse_topn, analyze_ebpf, analyze_async_profiler
 
 
 # ── parse_topn unit tests ───────────────────────────────────────────
@@ -106,3 +106,45 @@ class TestAnalyzeEbpf:
         # ext4_file_write_iter should be #1 with 200 self
         assert data[0]["func"] == "ext4_file_write_iter"
         assert data[0]["self"] == 200
+
+
+# ── analyze_async_profiler integration test ───────────────────────────
+
+class TestAnalyzeAsyncProfiler:
+    """Test that analyze_async_profiler produces correct artifacts."""
+
+    @pytest.fixture
+    def collapsed_file(self, tmp_path):
+        """Create a sample async-profiler collapsed stack file.
+
+        async-profiler's ``-f *.collapsed`` output uses the same
+        folded-stack format: ``frame1;frame2;... count``.
+        """
+        p = tmp_path / "async_profiler.collapsed"
+        p.write_text(
+            "java/lang/Thread.run;com/example/App.main;com/example/App.compute 300\n"
+            "java/lang/Thread.run;com/example/App.main;com/example/App.ioWait 150\n"
+            "java/lang/Thread.run;com/example/App.main;com/example/App.compute 80\n"
+        )
+        return str(p)
+
+    def test_produces_java_svg(self, collapsed_file, tmp_path):
+        artifacts = analyze_async_profiler("test-tid", collapsed_file, str(tmp_path))
+        assert "flamegraph_java.svg" in artifacts
+
+        svg_path = tmp_path / "flamegraph_java.svg"
+        assert svg_path.exists()
+        content = svg_path.read_text()
+        assert "Java Flame Graph" in content, "SVG title should contain 'Java Flame Graph'"
+
+    def test_produces_top_json(self, collapsed_file, tmp_path):
+        artifacts = analyze_async_profiler("test-tid", collapsed_file, str(tmp_path))
+        assert "top.json" in artifacts
+
+        top_path = tmp_path / "top.json"
+        assert top_path.exists()
+        data = json.loads(top_path.read_text())
+        assert len(data) > 0
+        # compute should be #1 with 300+80=380 self
+        assert data[0]["func"] == "com/example/App.compute"
+        assert data[0]["self"] == 380

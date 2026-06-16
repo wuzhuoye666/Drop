@@ -59,6 +59,7 @@ target_link_libraries(drop_proto PUBLIC
 add_library(drop_common
   common/src/task_queue.cpp
   common/src/perf_profiler.cpp
+  common/src/async_profiler_profiler.cpp
   common/src/profiler_factory.cpp
   common/src/ebpf_loader.cpp
   common/src/ebpf_profiler.cpp
@@ -110,4 +111,20 @@ target_include_directories(drop_ebpf_test PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/common/src
 )
 
+add_executable(drop_async_profiler_test
+  tests/async_profiler_test.cpp
+)
+target_link_libraries(drop_async_profiler_test PRIVATE
+  drop_common
+  GTest::GTest
+  GTest::gtest_main
+  glog::glog
+  pthread
+)
+target_include_directories(drop_async_profiler_test PRIVATE
+  ${GEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/src
+)
+
 add_test(NAME ebpf COMMAND drop_ebpf_test)
+add_test(NAME async_profiler COMMAND drop_async_profiler_test)

@@ -42,8 +42,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgrpc++-dev libgrpc-dev libprotobuf-dev \
     libgoogle-glog-dev libpq-dev libbpf-dev \
-    curl \
+    curl wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy install scripts
+COPY drop/tools/install_async_profiler.sh /tmp/install_async_profiler.sh
+
+# Install async-profiler for Java profiling (profiler_type=1).
+# Uses install script with GitHub + Maven Central fallback.
+RUN bash /tmp/install_async_profiler.sh && rm -f /tmp/install_async_profiler.sh
 
 COPY --from=builder /opt/FlameGraph /opt/FlameGraph
 

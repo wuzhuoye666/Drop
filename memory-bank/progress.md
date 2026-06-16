@@ -17,32 +17,28 @@ type: project
 | 3 | Agent+Server心跳与任务下发 | ✅ 已完成 | S3.1-S3.7 全部完成 | 2026-06-16 |
 | 4 | perf采集全链路 | ✅ 已完成 | S4.1-S4.9 全部完成 | 2026-06-16 |
 | 5 | eBPF采集器 | ✅ 已完成 | S5.1-S5.7 全部完成 | 2026-06-16 |
-| 6 | 用户态语言级采集器 | ⬜ 未开始 | - | - |
+| 6 | 用户态语言级采集器 | ✅ 已完成 | S6.1-S6.5 全部完成 | 2026-06-16 |
 | 7 | Continuous Profiling | ⬜ 未开始 | - | - |
 | 8 | 智能归因+NL (加分) | ⬜ 未开始 | - | - |
 | 9 | 测试加固+部署 | ⬜ 未开始 | - | - |
 
-## Phase 5 补验收：Bug 修复 + 测试 + 集成验证
+## Phase 6 详细进度
 
 | Step | 内容 | 状态 |
 |------|------|------|
-| 5.B1 | 修复 BPF offcpu.bpf.c 错误采集 next 进程 Bug（改用 ctx->prev_pid） | ✅ |
-| 5.B2 | 修复 EbpfLoader 悬空指针 Bug（map 迭代 error path） | ✅ |
-| 5.B3 | 修复 addr2line fork 炸弹（改为批量 BatchResolveUserSymbols） | ✅ |
-| 5.B4 | 补充 BPF map 清理 + 用户态缓存 FIFO 驱逐 | ✅ |
-| 5.T1 | 补充 C++ eBPF 单元测试 (GTest, 7 tests, ctest -R ebpf) | ✅ |
-| 5.T2 | 补充 Go eBPF API 集成测试 (2 tests, profiler_type=3 CRUD) | ✅ |
-| 5.T3 | 补充 Python analysis 单元测试 (6 tests, parse_topn + analyze_ebpf) | ✅ |
-| 5.E1 | 修复 demo_ebpf.sh TID 提取 Bug (.data.tid → .data.tid) | ✅ |
-| 5.E2 | 全链路集成验证：创建eBPF任务→采集→分析→产物就绪 | ✅ |
-| 5.D1 | Docker 构建验证 | 🔄 缺libgtest-dev已修复，待重试 |
+| 6.1 | 集成 async-profiler 安装脚本 | ✅ |
+| 6.2 | AsyncProfilerProfiler C++类 + ProfilerFactory注册 | ✅ |
+| 6.3 | analysis侧 analyze_async_profiler() 管线 | ✅ |
+| 6.4 | Web端 Java Flame Graph Tab + 动态参数表单 | ✅ |
+| 6.5 | Dockerfile集成 + Go handler event字段 | ✅ |
+| 6.6 | C++ 6个单测 + Python 2个单测 | ✅ |
 
 ## 需求完成度汇总
 
 | 类别 | 总数 | 已完成 | 完成率 |
 |------|------|--------|--------|
 | 基础能力 B1-B6 | 6 | 4 | 67% |
-| 扩展能力 E1-E3 | 3 | 1 | 33% |
+| 扩展能力 E1-E3 | 3 | 2 | 67% |
 | 加分项 E4-E5 | 2 | 0 | 0% |
 | 工程要求 G1-G4 | 4 | 0 | 0% |
 | B1(Web下发) | ✅ | | |
@@ -52,14 +48,15 @@ type: project
 | B5(心跳+审计) | ✅ | | |
 | B6(日志+错误处理) | 🔵 进行中 | | |
 | E2(eBPF采集器) | ✅ | | |
+| E3(用户态采集器) | ✅ | | |
 
 ## 测试覆盖率
 
 | 组件 | 当前覆盖率 | 目标 |
 |------|-----------|------|
-| drop (C++) | ~10% (7 eBPF tests) | ≥50% |
+| drop (C++) | ~15% (13 tests total) | ≥50% |
 | apiserver (Go) | ~18% (24 tests) | ≥50% |
-| analysis (Python) | ~15% (6 tests) | ≥50% |
+| analysis (Python) | ~20% (8 tests) | ≥50% |
 | web_frontend (JS/TS) | 0% | - |
 
 ## 端到端集成测试
@@ -82,3 +79,4 @@ type: project
 | 2026-06-16 | Phase 4 实施 | 全部9步验证通过 | 容器环境PID namespace限制perf |
 | 2026-06-16 | Phase 5 实施 | 全部7步验证通过 | 用户态符号可能显示[unknown] |
 | 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过，已提交 | Docker构建缺libgtest-dev已修复待重试 |
+| 2026-06-16 | Phase 6 实施 | async-profiler全链路实现，8个新测试通过 | 当前环境无法下载async-profiler二进制 |

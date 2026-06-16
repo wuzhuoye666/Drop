@@ -160,6 +160,34 @@ def parse_topn(collapsed_path: str, top_n: int = 30) -> list:
     return result
 
 
+def analyze_async_profiler(tid: str, collapsed_path: str, work_dir: str) -> list:
+    """async-profiler collapsed stack → Java flame graph + top.json
+
+    async-profiler's ``-f *.collapsed`` output is already in folded-stack
+    format (``func1;func2;... count``), so no intermediate conversion
+    is needed — just feed it straight to flamegraph.pl with the java
+    colour palette.
+    """
+    svg_path = os.path.join(work_dir, "flamegraph_java.svg")
+    top_path = os.path.join(work_dir, "top.json")
+
+    fg_tool = _find_tool("flamegraph.pl")
+    with open(collapsed_path) as fin, open(svg_path, "w") as fout:
+        r = subprocess.run(
+            ["perl", fg_tool, "--color", "java",
+             "--title", "Java Flame Graph (async-profiler)", "--width", "1200"],
+            stdin=fin, stdout=fout, timeout=60,
+        )
+        if r.returncode != 0:
+            raise RuntimeError("flamegraph.pl failed for async-profiler data")
+
+    topn = parse_topn(collapsed_path)
+    with open(top_path, "w") as f:
+        json.dump(topn, f, indent=2, ensure_ascii=False)
+
+    return ["async_profiler.collapsed", "flamegraph_java.svg", "top.json"]
+
+
 def analyze_ebpf(tid: str, collapsed_path: str, work_dir: str) -> list:
     """eBPF collapsed stack → off-CPU flame graph + top.json"""
     svg_path = os.path.join(work_dir, "flamegraph_offcpu.svg")
@@ -249,6 +277,11 @@ def main():
             profiler_type = task.get("profiler_type", 0)
             if profiler_type == 0:
                 artifacts = analyze_perf(args.task_id, perf_data_path, work_dir)
+            elif profiler_type == 1:
+                # async-profiler: the uploaded file IS the collapsed stack
+                collapsed_ap = os.path.join(work_dir, "async_profiler.collapsed")
+                os.rename(perf_data_path, collapsed_ap)
+                artifacts = analyze_async_profiler(args.task_id, collapsed_ap, work_dir)
             elif profiler_type == 3:
                 # eBPF: the uploaded file IS the collapsed stack
                 collapsed_ebpf = os.path.join(work_dir, "collapsed_ebpf.txt")

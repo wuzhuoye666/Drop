@@ -22,6 +22,7 @@ export const createTask = (data: {
   pid: number;
   duration: number;
   hz: number;
+  event?: string;
 }) => api.post('/tasks', data);
 
 export const listTasks = (page = 1, pageSize = 20) =>

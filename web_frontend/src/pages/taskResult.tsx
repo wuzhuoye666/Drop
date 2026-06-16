@@ -55,10 +55,12 @@ export default function TaskResultPage() {
   if (!task) return <div style={{ padding: 24 }}>Loading...</div>;
 
   const isEbpf = task.profiler_type === 3;
-  const svgFile = files.find(f => f.name === (isEbpf ? 'flamegraph_offcpu.svg' : 'flamegraph.svg'));
+  const isAsyncProfiler = task.profiler_type === 1;
+  const svgFile = files.find(f =>
+    f.name === (isEbpf ? 'flamegraph_offcpu.svg' : isAsyncProfiler ? 'flamegraph_java.svg' : 'flamegraph.svg'));
   const topFile = files.find(f => f.name === 'top.json');
 
-  const flameTabLabel = isEbpf ? 'Off-CPU Flame Graph' : 'CPU Flame Graph';
+  const flameTabLabel = isEbpf ? 'Off-CPU Flame Graph' : isAsyncProfiler ? 'Java Flame Graph' : 'CPU Flame Graph';
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
