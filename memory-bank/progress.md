@@ -35,7 +35,7 @@ type: project
 | 5.T3 | 补充 Python analysis 单元测试 (6 tests, parse_topn + analyze_ebpf) | ✅ |
 | 5.E1 | 修复 demo_ebpf.sh TID 提取 Bug (.data.tid → .data.tid) | ✅ |
 | 5.E2 | 全链路集成验证：创建eBPF任务→采集→分析→产物就绪 | ✅ |
-| 5.D1 | Docker 构建验证 | 🔄 进行中 |
+| 5.D1 | Docker 构建验证 | 🔄 缺libgtest-dev已修复，待重试 |
 
 ## 需求完成度汇总
 
@@ -81,4 +81,4 @@ type: project
 | 2026-06-16 | Phase 3 实施 | 全部7步验收通过 | - |
 | 2026-06-16 | Phase 4 实施 | 全部9步验证通过 | 容器环境PID namespace限制perf |
 | 2026-06-16 | Phase 5 实施 | 全部7步验证通过 | 用户态符号可能显示[unknown] |
-| 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过 | Docker构建进行中 |
+| 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过，已提交 | Docker构建缺libgtest-dev已修复待重试 |
