@@ -388,11 +388,11 @@ type: project
 
 ---
 
-## Phase 5：eBPF采集器 `[ ]`
+## Phase 5：eBPF采集器 `[x]`
 
 **目标**：eBPF采集器真跑，现场触发IO/调度异常能看到变化
 
-### Step 5.1 `[ ]` 编写eBPF内核态探针
+### Step 5.1 `[x]` 编写eBPF内核态探针
 - off-CPU采样：`tracepoint/sched/sched_switch` 捕获被切换出的进程栈
 - 或IO追踪：`kprobe/do_sys_open` / `tracepoint/syscalls/sys_enter_read`
 - `.bpf.c` 中使用 `BPF_MAP_TYPE_STACK_TRACE` 采集内核栈+用户栈
@@ -403,7 +403,7 @@ type: project
 2. `llvm-objdump -S offcpu.bpf.o | grep tracepoint` → 命中，确认探针存在
 3. `llvm-objdump -S offcpu.bpf.o | grep -c BPF_MAP_TYPE_STACK_TRACE` → ≥1
 
-### Step 5.2 `[ ]` 用户态libbpf加载器
+### Step 5.2 `[x]` 用户态libbpf加载器
 - EbpfLoader类: `load(bpf_o_path)` → `attach(target_pid)` → `poll(duration_sec)` → `detach()` → `unload()`
 - ring buffer 读取栈数据，结合 `/proc/kallsyms` 解析符号
 - 转为折叠栈格式写入文件
@@ -414,7 +414,7 @@ type: project
 3. `head output.txt | grep ';'` → 折叠栈格式正确（`func1;func2 ... count`）
 4. `dmesg | tail -5` → 无 BPF verifier 错误
 
-### Step 5.3 `[ ]` EbpfProfiler采集器类
+### Step 5.3 `[x]` EbpfProfiler采集器类
 - 继承 `IProfiler`
 - `record()`: 启动EbpfLoader采样指定时长
 - `collect_result()`: 返回折叠栈文件路径
@@ -426,7 +426,7 @@ type: project
 3. 采集完成后产物 `/tmp/drop_<tid>/collapsed_ebpf.txt` 非空
 4. `head collapsed_ebpf.txt | grep ';'` → 格式正确
 
-### Step 5.4 `[ ]` eBPF数据 → 火焰图
+### Step 5.4 `[x]` eBPF数据 → 火焰图
 - analysis识别eBPF折叠栈 → `flamegraph.pl --color=io --title="Off-CPU Flame Graph"`
 - 上传 `flamegraph_offcpu.svg` 到MinIO
 
@@ -435,7 +435,7 @@ type: project
 2. SVG标题包含 "Off-CPU"
 3. 颜色方案不同于CPU火焰图（IO色系，偏紫/绿）
 
-### Step 5.5 `[ ]` Web端eBPF独有可视化
+### Step 5.5 `[x]` Web端eBPF独有可视化
 - 详情页根据profiler_type显示不同Tab
 - eBPF → "Off-CPU火焰图" Tab
 - 可选：IO延迟热力图（ECharts heatmap）
@@ -445,7 +445,7 @@ type: project
 2. 看到"Off-CPU火焰图"Tab而非"CPU火焰图"
 3. 视觉上与CPU火焰图有明显区别
 
-### Step 5.6 `[ ]` demo脚本验证eBPF
+### Step 5.6 `[x]` demo脚本验证eBPF
 - 脚本1：`dd if=/dev/zero of=/tmp/bigfile bs=1M count=1024` 触发IO压力
 - 脚本2：`stress-ng --cpu 4 --io 2 --timeout 30s` 触发调度竞争
 - 在压力期间启动eBPF采集，采集后对比基线
@@ -455,7 +455,7 @@ type: project
 2. 施压期间off-CPU火焰图 → 出现IO wait / schedule相关栈帧
 3. 两次火焰图对比差异肉眼可辨，包含dd/stress相关调用
 
-### Step 5.7 `[ ]` Docker特权配置
+### Step 5.7 `[x]` Docker特权配置
 - drop_agent服务：`privileged: true`（或 `cap_add: [SYS_ADMIN, PERFMON, NET_ADMIN]`）
 - `pid: host`（看到主机进程）
 - 挂载 `/sys/kernel/debug:/sys/kernel/debug:ro`

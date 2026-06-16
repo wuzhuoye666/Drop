@@ -160,6 +160,29 @@ def parse_topn(collapsed_path: str, top_n: int = 30) -> list:
     return result
 
 
+def analyze_ebpf(tid: str, collapsed_path: str, work_dir: str) -> list:
+    """eBPF collapsed stack → off-CPU flame graph + top.json"""
+    svg_path = os.path.join(work_dir, "flamegraph_offcpu.svg")
+    top_path = os.path.join(work_dir, "top.json")
+
+    fg_tool = _find_tool("flamegraph.pl")
+    with open(collapsed_path) as fin, open(svg_path, "w") as fout:
+        r = subprocess.run(
+            ["perl", fg_tool, "--color", "io",
+             "--title", "Off-CPU Flame Graph", "--width", "1200",
+             "--countname", "microseconds"],
+            stdin=fin, stdout=fout, timeout=60,
+        )
+        if r.returncode != 0:
+            raise RuntimeError("flamegraph.pl failed for eBPF data")
+
+    topn = parse_topn(collapsed_path)
+    with open(top_path, "w") as f:
+        json.dump(topn, f, indent=2, ensure_ascii=False)
+
+    return ["collapsed_ebpf.txt", "flamegraph_offcpu.svg", "top.json"]
+
+
 def _find_tool(name: str) -> str:
     """Find FlameGraph tool in common locations."""
     candidates = [
@@ -226,6 +249,11 @@ def main():
             profiler_type = task.get("profiler_type", 0)
             if profiler_type == 0:
                 artifacts = analyze_perf(args.task_id, perf_data_path, work_dir)
+            elif profiler_type == 3:
+                # eBPF: the uploaded file IS the collapsed stack
+                collapsed_ebpf = os.path.join(work_dir, "collapsed_ebpf.txt")
+                os.rename(perf_data_path, collapsed_ebpf)
+                artifacts = analyze_ebpf(args.task_id, collapsed_ebpf, work_dir)
             else:
                 raise RuntimeError(f"Unsupported profiler_type={profiler_type}")
 

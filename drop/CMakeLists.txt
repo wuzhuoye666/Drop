@@ -9,9 +9,10 @@ find_package(Protobuf REQUIRED)
 find_package(gRPC REQUIRED)
 find_package(glog REQUIRED)
 
-# Use pkg-config for libpq
+# Use pkg-config for libpq and libbpf
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PQ REQUIRED IMPORTED_TARGET libpq)
+pkg_check_modules(LIBBPF REQUIRED IMPORTED_TARGET libbpf)
 
 # Proto generation
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common/proto)
@@ -59,16 +60,20 @@ add_library(drop_common
   common/src/task_queue.cpp
   common/src/perf_profiler.cpp
   common/src/profiler_factory.cpp
+  common/src/ebpf_loader.cpp
+  common/src/ebpf_profiler.cpp
 )
 target_include_directories(drop_common PUBLIC
   ${GEN_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/common/src
   ${PQ_INCLUDE_DIRS}
+  ${LIBBPF_INCLUDE_DIRS}
 )
 target_link_libraries(drop_common PUBLIC
   drop_proto
   glog::glog
   PkgConfig::PQ
+  PkgConfig::LIBBPF
 )
 
 # ── drop_server ──────────────────────────────────────────────────

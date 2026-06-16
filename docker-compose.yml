@@ -32,6 +32,32 @@ services:
       timeout: 5s
       retries: 5
 
+  drop_agent:
+    build:
+      context: .
+      dockerfile: drop/Dockerfile
+    # privileged is required for eBPF: allows loading BPF programs, accessing
+    # perf events, and mounting BPF filesystem
+    privileged: true
+    # host PID namespace: agent must see host PIDs to profile them by PID
+    pid: host
+    volumes:
+      # BPF filesystem: needed by libbpf to pin maps and load programs
+      - /sys/fs/bpf:/sys/fs/bpf
+      # Kernel debugfs: required by BPF stack traces and perf events
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      # Kernel headers: needed for BTF type information (vmlinux.h fallback)
+      - /lib/modules:/lib/modules:ro
+      # Shared memory for perf ring buffer
+      - /dev/shm:/dev/shm
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: ["/opt/drop/drop_agent", "-foreground", "-server_addr", "127.0.0.1:50051", "-apiserver_addr", "http://127.0.0.1:8191"]
+
 volumes:
   pgdata:
   miniodata:

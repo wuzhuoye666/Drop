@@ -22,7 +22,7 @@ type: project
 | # | 需求 | 来源(文档章节) | 实现位置 | 状态 | 完成度 |
 |---|------|---------------|----------|------|--------|
 | E1 | Continuous Profiling：常驻低频采样、定时切割、按时间轴回溯任意5分钟窗口 | 扩展-Continuous | drop/agent(HotmethodChannel continuous mode), web_frontend/timeline | ⬜ 未开始 | 0% |
-| E2 | eBPF采集器：使用libbpf/bcc/bpftrace，至少一个内核态探针 | 扩展-多采集器1 | drop/agent/EbpfProfiler, drop/common/bpf | ⬜ 未开始 | 0% |
+| E2 | eBPF采集器：使用libbpf/bcc/bpftrace，至少一个内核态探针 | 扩展-多采集器1 | drop/common/bpf/offcpu.bpf.c (内核探针), drop/common/src/ebpf_loader.cpp (libbpf加载器), drop/common/src/ebpf_profiler.cpp (IProfiler实现) | ✅ 已完成 | 100% |
 | E3 | 用户态语言级采集器(py-spy/async-profiler/pprof三选一)，有自己的可视化形态 | 扩展-多采集器2 | drop/agent/AsyncProfilerProfiler 或 PprofProfiler, web_frontend/对应图表 | ⬜ 未开始 | 0% |
 | E4 | 智能归因：火焰图+元数据+baseline结构化喂给LLM | 加分-智能归因 | analysis/analysis_advisor.py, analysis/hunyuanApi.py | ⬜ 未开始 | 0% |
 | E5 | 自然语言采集：一句话描述意图→自动识别目标/选工具/定采样率/采完总结/追问 | 加分-NL采集 | apiserver/nl_handler.go, analysis/nl_parser.py | ⬜ 未开始 | 0% |

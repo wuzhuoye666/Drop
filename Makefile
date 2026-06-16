@@ -27,9 +27,12 @@ proto: ## Generate protobuf + gRPC code for C++ and Go
 	@echo "Go proto generation done"
 
 # ── Build ────────────────────────────────────────────────────────
-build: build-cpp build-go build-frontend ## Build all components
+build: build-bpf build-cpp build-go build-frontend ## Build all components
 
-build-cpp: ## Build C++ drop_server + drop_agent
+build-bpf: ## Compile eBPF kernel probes
+	cd drop/common/bpf && make
+
+build-cpp: build-bpf ## Build C++ drop_server + drop_agent
 	@mkdir -p drop/build && cd drop/build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$$(nproc)
 
 build-go: ## Build Go apiserver
@@ -67,6 +70,7 @@ infra-down: ## Stop and remove infrastructure
 # ── Clean ────────────────────────────────────────────────────────
 clean: ## Remove all build artifacts
 	rm -rf drop/build
+	cd drop/common/bpf && make clean
 	rm -f apiserver/apiserver
 	rm -rf web_frontend/dist web_frontend/node_modules
 	@echo "Clean done"

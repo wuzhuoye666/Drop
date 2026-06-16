@@ -16,32 +16,30 @@ type: project
 | 2 | PG模型+API骨架 | ✅ 已完成 | S2.1-S2.6 全部完成 | 2026-06-16 |
 | 3 | Agent+Server心跳与任务下发 | ✅ 已完成 | S3.1-S3.7 全部完成 | 2026-06-16 |
 | 4 | perf采集全链路 | ✅ 已完成 | S4.1-S4.9 全部完成 | 2026-06-16 |
-| 5 | eBPF采集器 | ⬜ 未开始 | - | - |
+| 5 | eBPF采集器 | ✅ 已完成 | S5.1-S5.7 全部完成 | 2026-06-16 |
 | 6 | 用户态语言级采集器 | ⬜ 未开始 | - | - |
 | 7 | Continuous Profiling | ⬜ 未开始 | - | - |
 | 8 | 智能归因+NL (加分) | ⬜ 未开始 | - | - |
 | 9 | 测试加固+部署 | ⬜ 未开始 | - | - |
 
-## Phase 4 详细Step状态
+## Phase 5 详细Step状态
 
 | Step | 内容 | 状态 |
 |------|------|------|
-| 4.1 | PerfProfiler采集器实现 (IProfiler + fork+execvp + PID fallback) | ✅ |
-| 4.2 | 超时杀进程机制 (setpgid + SIGTERM + SIGKILL) | ✅ |
-| 4.3 | Agent上传MinIO + NotifyResult带cos_key | ✅ |
-| 4.4 | analysis入口(PG读参数+MinIO下载) | ✅ |
-| 4.5 | perf→火焰图生成链 (perf script→stackcollapse→flamegraph.pl) | ✅ |
-| 4.6 | TopN热点解析 (collapsed→top.json) | ✅ |
-| 4.7 | apiserver定时轮询触发analysis (10s扫描) | ✅ |
-| 4.8 | web_frontend任务列表+新建+详情页 | ✅ |
-| 4.9 | 火焰图渲染(iframe+PreSign) | ✅ |
+| 5.1 | eBPF内核态off-CPU探针 (offcpu.bpf.c + Makefile + vmlinux.h) | ✅ |
+| 5.2 | 用户态libbpf加载器 (EbpfLoader: load→attach→poll→detach→unload) | ✅ |
+| 5.3 | EbpfProfiler采集器类 (IProfiler实现，profiler_type=3) | ✅ |
+| 5.4 | eBPF数据→火焰图 (analyze_ebpf + --color=io + Off-CPU标题) | ✅ |
+| 5.5 | Web端eBPF独有可视化 (动态Tab名 + flamegraph_offcpu.svg) | ✅ |
+| 5.6 | demo脚本验证eBPF (dd + stress-ng + 基线对比) | ✅ |
+| 5.7 | Docker特权配置 (privileged + pid:host + BPF/debugfs挂载) | ✅ |
 
 ## 需求完成度汇总
 
 | 类别 | 总数 | 已完成 | 完成率 |
 |------|------|--------|--------|
 | 基础能力 B1-B6 | 6 | 4 | 67% |
-| 扩展能力 E1-E3 | 3 | 0 | 0% |
+| 扩展能力 E1-E3 | 3 | 1 | 33% |
 | 加分项 E4-E5 | 2 | 0 | 0% |
 | 工程要求 G1-G4 | 4 | 0 | 0% |
 | B1(Web下发) | ✅ | | |
@@ -50,6 +48,7 @@ type: project
 | B4(状态机) | ✅ | | |
 | B5(心跳+审计) | ✅ | | |
 | B6(日志+错误处理) | 🔵 进行中 | | |
+| E2(eBPF采集器) | ✅ | | |
 
 ## 测试覆盖率
 
@@ -77,3 +76,4 @@ type: project
 | 2026-06-16 | Phase 2 实施 | 全部6步验收通过 | - |
 | 2026-06-16 | Phase 3 实施 | 全部7步验收通过 | - |
 | 2026-06-16 | Phase 4 实施 | 全部9步验证通过：PerfProfiler+超时+上传+分析+调度+前端 | 容器环境PID namespace限制perf -p，已做fallback |
+| 2026-06-16 | Phase 5 实施 | 全部7步验证通过：offcpu.bpf.c+EbpfLoader+EbpfProfiler+analysis+前端+Docker+demo | 用户态符号对于JIT/短命进程可能显示[unknown] |
