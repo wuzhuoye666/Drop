@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(drop LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Protobuf + gRPC ──────────────────────────────────────────────
@@ -9,7 +9,11 @@ find_package(Protobuf REQUIRED)
 find_package(gRPC REQUIRED)
 find_package(glog REQUIRED)
 
-# Proto generation macro
+# Use pkg-config for libpq
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PQ REQUIRED IMPORTED_TARGET libpq)
+
+# Proto generation
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common/proto)
 set(GEN_DIR   ${CMAKE_CURRENT_BINARY_DIR}/gen)
 file(MAKE_DIRECTORY ${GEN_DIR})
@@ -50,11 +54,26 @@ target_link_libraries(drop_proto PUBLIC
   gRPC::grpc++_reflection
 )
 
+# ── Shared source (task_queue, PG store) ──────────────────────────
+add_library(drop_common
+  common/src/task_queue.cpp
+)
+target_include_directories(drop_common PUBLIC
+  ${GEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/src
+  ${PQ_INCLUDE_DIRS}
+)
+target_link_libraries(drop_common PUBLIC
+  drop_proto
+  glog::glog
+  PkgConfig::PQ
+)
+
 # ── drop_server ──────────────────────────────────────────────────
 add_executable(drop_server
   server/main.cpp
 )
-target_link_libraries(drop_server PRIVATE drop_proto glog::glog)
+target_link_libraries(drop_server PRIVATE drop_common glog::glog gflags)
 target_include_directories(drop_server PRIVATE ${GEN_DIR})
 
 # ── drop_agent ───────────────────────────────────────────────────

@@ -13,9 +13,9 @@ type: project
 | B1 | Web UI指定目标PID/采样时长/采样率，通过Server下发任务给Agent | 基础能力1 | web_frontend/createTaskModal, apiserver/task.go, drop/agent | ⬜ 未开始 | 0% |
 | B2 | Agent采集存储目标进程性能数据(CPU/内存)，通知Analyzer | 基础能力2 | drop/agent/HotmethodChannel, analysis/hotmethod_analyzer.py | ⬜ 未开始 | 0% |
 | B3 | Analyzer转成Web可展现格式(火焰图D3/ECharts/热力图) | 基础能力3 | analysis/flamegraph.py, web_frontend/flamegraph | ⬜ 未开始 | 0% |
-| B4 | 状态机PENDING→RUNNING→UPLOADING→DONE/FAILED，每次迁移落库带reason | 基础能力4 | apiserver/server/server.go(updateTaskStatus), apiserver/model/model.go | 🔵 进行中 | 40% |
-| B5 | Agent每5s心跳，Server 30s无心跳判离线，Web有Agent列表，离线/恢复有审计日志 | 基础能力5 | drop/agent/HealthCheckChannel, drop/server/HealthCheckService, apiserver/agent.go | ⬜ 未开始 | 0% |
-| B6 | 结构化日志、显式错误处理、单测≥50%、≥3端到端集成测试 | 基础能力6 | 全组件，apiserver/middleware/log.go, apiserver/server/*_test.go | 🔵 进行中 | 20% |
+| B4 | 状态机PENDING→RUNNING→UPLOADING→DONE/FAILED，每次迁移落库带reason | 基础能力4 | apiserver/server/server.go(updateTaskStatus), drop/common/src/task_queue.cpp | ✅ 已完成 | 100% |
+| B5 | Agent每5s心跳，Server 30s无心跳判离线，Web有Agent列表，离线/恢复有审计日志 | 基础能力5 | drop/agent/main.cpp, drop/server/main.cpp, drop/common/src/task_queue.cpp, apiserver/server/handler.go | ✅ 已完成 | 100% |
+| B6 | 结构化日志、显式错误处理、单测≥50%、≥3端到端集成测试 | 基础能力6 | 全组件，apiserver/middleware/log.go, apiserver/server/*_test.go, drop/common/src/task_queue.cpp | 🔵 进行中 | 30% |
 
 ## 扩展能力
 

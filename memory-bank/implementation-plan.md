@@ -194,11 +194,11 @@ type: project
 
 ---
 
-## Phase 3：Agent + Server 心跳与任务下发 `[ ]`
+## Phase 3：Agent + Server 心跳与任务下发 `[x]`
 
 **目标**：Agent真心跳，Server真能下发任务，状态机真实运转落库
 
-### Step 3.1 `[ ]` HealthCheckService：心跳 + 拉取任务
+### Step 3.1 `[x]` HealthCheckService：心跳 + 拉取任务
 - Agent: 1Hz循环调用 HealthCheck.Do()，发送 hostName/ipAddr/uid/PidStats
 - Server: 收到心跳 → 更新 agent_info 表的 last_heartbeat_at → 检查 tasks_[ipAddr] 队列 → 有则 response.pending=true + 填入 taskDesc
 - 要点：memory中的任务队列(tasks_)和PG中的任务状态要同步——CreateTask时写PG+推队列，心跳派发时更新PG status=1(RUNNING)
@@ -209,7 +209,7 @@ type: project
 3. Server日志显示心跳响应（pending=false）
 4. `psql -c "SELECT last_heartbeat_at FROM agent_info WHERE ip_addr='127.0.0.1'"` → 时间戳在5秒内
 
-### Step 3.2 `[ ]` ControlService：apiserver → Server 下发任务
+### Step 3.2 `[x]` ControlService：apiserver → Server 下发任务
 - CreateTask: 接收 targetIP + TaskDesc → `tasks_[targetIP].push_back(taskDesc)` (mutex保护) → 写PG status=0 PENDING
 - StatAgent: 返回所有已注册Agent列表 + online状态
 - 要点：Server启动时起一个后台线程同步PG中 agent_info 的 online 状态（替代纯内存map）
@@ -219,7 +219,7 @@ type: project
 2. Server日志显示 "task t001 pushed to queue for 127.0.0.1"
 3. `psql -c "SELECT status, status_info FROM hotmethod_task WHERE tid='t001'"` → status=0, status_info非空
 
-### Step 3.3 `[ ]` Agent心跳线程 + 工作线程分离
+### Step 3.3 `[x]` Agent心跳线程 + 工作线程分离
 - 心跳线程：独立的 `std::thread`，1Hz循环，绝不阻塞
 - 工作线程：从 `std::deque<TaskDesc>` 取任务执行（当前Phase只sleep对应duration模拟采集）
 - 通信：`std::mutex` + `std::condition_variable`
@@ -231,7 +231,7 @@ type: project
 3. Agent日志：工作线程显示 "task t001 started" 和 "task t001 finished"
 4. 心跳无间断（即使工作线程在忙）
 
-### Step 3.4 `[ ]` Agent守护化(daemonize)
+### Step 3.4 `[x]` Agent守护化(daemonize)
 - 实现：fork→父退出→setsid→再fork→关0/1/2→重定向/dev/null
 - 写PID文件 `/tmp/drop_agent.pid`
 - 支持 `-foreground` flag 跳过守护化
@@ -241,7 +241,7 @@ type: project
 2. `cat /tmp/drop_agent.pid` → PID数字，`ps -p <PID>` 存在
 3. 带flag启动：`./drop_agent -config config.json -foreground` → 日志打到终端
 
-### Step 3.5 `[ ]` Agent自监控PidStats
+### Step 3.5 `[x]` Agent自监控PidStats
 - 每1秒读 `/proc/self/stat` → CPU% = (utime+stime差值)/(间隔×clk_tck)×100
 - 读 `/proc/self/statm` → RSS = 第2字段×pagesize
 - 读 `/proc/self/io` → read_bytes/write_bytes差值 → KB/s
@@ -252,7 +252,7 @@ type: project
 2. cpu_percent > 0（Agent本身占用CPU）
 3. rss_mb 数值合理（10~100MB量级）
 
-### Step 3.6 `[ ]` Server 30s无心跳判离线 + 审计日志
+### Step 3.6 `[x]` Server 30s无心跳判离线 + 审计日志
 - Server后台线程每10秒扫描 agent_info 表
 - 当前时间 - last_heartbeat_at > 30秒 且 online=true → UPDATE online=false, INSERT agent_audit_log(event_type='offline', reason='30s无心跳')
 - 检测到 online=false → true → INSERT agent_audit_log(event_type='online', reason='心跳恢复')
@@ -265,7 +265,7 @@ type: project
 5. 重启Agent，等10秒
 6. `psql "SELECT event_type FROM agent_audit_log ORDER BY id DESC LIMIT 1"` → online
 
-### Step 3.7 `[ ]` 状态机完整实现与落库
+### Step 3.7 `[x]` 状态机完整实现与落库
 - 封装 `updateTaskStatus(tid, newStatus, reason)` 函数：
   1. `BEGIN; SELECT * FROM hotmethod_task WHERE tid=? FOR UPDATE;`
   2. 校验 `old_status → new_status` 合法性（迁移图允许的边）

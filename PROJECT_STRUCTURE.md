@@ -18,38 +18,23 @@ Drop/
 ├── drop/                           # C++ Agent + Server
 │   ├── CMakeLists.txt
 │   ├── common/
-│   │   ├── proto/                  # 4个.proto协议定义
-│   │   │   ├── healthcheck.proto   #   Agent心跳
+│   │   ├── proto/                  # 5个.proto协议定义
+│   │   │   ├── common.proto        #   PidStats/File/CosConfig/RecordArgv
+│   │   │   ├── healthcheck.proto   #   Agent心跳+任务拉取
 │   │   │   ├── hotmethod.proto     #   任务下发+结果上报
 │   │   │   ├── control.proto       #   apiserver→Server控制面
-│   │   │   ├── init.proto          #   Agent注册+配置拉取
-│   │   │   └── common.proto        #   PidStats/File/CosConfig
+│   │   │   └── init.proto          #   Agent注册+配置拉取
 │   │   ├── src/
-│   │   │   ├── Perf.cpp            #   perf工具封装
-│   │   │   ├── EbpfCollector.cpp   #   eBPF采集器封装
-│   │   │   ├── AsyncProfilerCollector.cpp
-│   │   │   ├── PprofCollector.cpp
-│   │   │   ├── Process.cpp         #   /proc读取
-│   │   │   ├── COSClient.cpp       #   对象存储上传
-│   │   │   ├── Daemon.cpp          #   守护进程化
-│   │   │   ├── Log.cpp             #   日志
-│   │   │   └── IProfiler.h         #   采集器抽象接口
-│   │   └── bpf/                    #   eBPF内核态程序
-│   │       ├── offcpu.bpf.c        #   off-CPU探针
-│   │       ├── iosnoop.bpf.c       #   IO延迟探针
-│   │       └── vmlinux.h           #   内核类型定义
+│   │   │   ├── task_queue.h          #   TaskQueue+HeartbeatTracker+PGStore
+│   │   │   ├── task_queue.cpp        #   PG连通+upsert+状态迁移+审计日志
+│   │   │   └── bpf/                    #   eBPF内核态程序
+│   │   │       ├── offcpu.bpf.c        #   off-CPU探针
+│   │   │       ├── iosnoop.bpf.c       #   IO延迟探针
+│   │   │       └── vmlinux.h           #   内核类型定义
 │   ├── agent/
-│   │   ├── main.cpp                #   入口
-│   │   ├── Config.h/cpp            #   JSON配置+多Server故障转移
-│   │   ├── HealthCheckChannel.h/cpp#   1Hz心跳线程
-│   │   ├── HotmethodChannel.h/cpp  #   工作线程池
-│   │   └── ContainerInfo.h/cpp     #   容器信息识别
+│   │   └── main.cpp                #   入口: 心跳线程+工作线程+守护化+PidStats
 │   ├── server/
-│   │   ├── main.cpp                #   启动4个gRPC service
-│   │   ├── HealthCheckService.h/cpp#   心跳处理+返回任务
-│   │   ├── HotmethodService.h/cpp  #   任务队列+NotifyResult
-│   │   ├── ControlService.h/cpp    #   apiserver入口
-│   │   └── InitAgentInfoService.h/cpp
+│   │   └── main.cpp                #   启动4个gRPC service+心跳扫描线程
 │   ├── client/                     # Python调试CLI（开发用）
 │   ├── etc/
 │   │   ├── config.json.example
@@ -64,18 +49,16 @@ Drop/
 │   ├── config/
 │   │   └── config.go               #   Viper配置加载
 │   ├── server/
-│   │   ├── server.go               #   APIServer结构体
-│   │   ├── auth.go                 #   鉴权
-│   │   ├── task.go                 #   任务CRUD(11个handler)
-│   │   ├── agent.go                #   Agent查询(2个handler)
-│   │   ├── group.go                #   组管理(6个handler)
-│   │   ├── schedule.go             #   定时任务
-│   │   ├── suggestion.go           #   AI建议+流式
-│   │   ├── flame.go                #   火焰图diff
-│   │   └── const_enum.go           #   状态码/错误码
-│   ├── model/                      #   GORM Model(7+张表)
+│   ├── server/
+│   │   ├── server.go               #   APIServer+状态机+updateTaskStatus
+│   │   └── handler.go              #   12个handler+gRPC dispatchTask
+│   ├── model/
+│   │   └── model.go               #   GORM 9表+常量定义
 │   ├── middleware/
-│   │   └── log.go                  #   access log中间件
+│   │   ├── auth.go                 #   Cookie鉴权+dev-mode
+│   │   ├── cors.go                 #   CORS
+│   │   ├── log.go                  #   结构化access log
+│   │   └── ratelimit.go            #   限流
 │   ├── proto/                      #   复制自drop/common/proto
 │   ├── pkg/
 │   │   ├── storage/

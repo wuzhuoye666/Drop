@@ -31,7 +31,7 @@ func (UserInfo) TableName() string { return "user_info" }
 type AgentInfo struct {
 	BaseModel
 	Hostname    string `gorm:"size:256;not null" json:"hostname"`
-	IPAddr      string `gorm:"size:64;not null;index" json:"ip_addr"`
+	IPAddr      string `gorm:"size:64;not null;uniqueIndex" json:"ip_addr"`
 	Online      bool   `gorm:"default:false;index:idx_ip_online,priority:2" json:"online"`
 	UID         string `gorm:"size:64;index" json:"uid"`
 	Gid         uint   `json:"gid"`

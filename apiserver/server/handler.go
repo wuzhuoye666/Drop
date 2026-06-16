@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/drop/apiserver/model"
+	pb "github.com/drop/apiserver/proto"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -77,7 +79,6 @@ func (s *APIServer) GetUser(c *gin.Context) {
 	var user model.UserInfo
 	err := s.db.Where("uid = ?", uid).First(&user).Error
 	if err != nil {
-		// Auto-create user on first visit
 		user = model.UserInfo{UID: uid, Name: name, Groups: "[]"}
 		if err := s.db.Create(&user).Error; err != nil {
 			s.logger.Error("create user", zap.Error(err))
@@ -125,7 +126,7 @@ func (s *APIServer) CreateTask(c *gin.Context) {
 	// Insert initial status history
 	history := model.TaskStatusHistory{
 		TID:       tid,
-		OldStatus: -1, // -1 means created from nothing
+		OldStatus: -1,
 		NewStatus: model.TaskStatusPending,
 		Reason:    "任务已创建",
 		Timestamp: task.CreateTime,
@@ -136,7 +137,6 @@ func (s *APIServer) CreateTask(c *gin.Context) {
 	if s.grpcCC != nil {
 		go s.dispatchTask(tid, req)
 	} else {
-		// gRPC unavailable — mark task as FAILED immediately rather than faking RUNNING
 		reason := "gRPC connection unavailable, cannot dispatch task to drop_server"
 		s.logger.Warn("cannot dispatch task", zap.String("tid", tid), zap.String("reason", reason))
 		if err := s.updateTaskStatus(context.Background(), tid, model.TaskStatusFailed, reason); err != nil {
@@ -191,7 +191,6 @@ func (s *APIServer) GetTask(c *gin.Context) {
 		return
 	}
 
-	// Generate presigned URLs for task outputs if storage available
 	data := gin.H{
 		"task": task,
 	}
@@ -216,17 +215,14 @@ func (s *APIServer) DeleteTask(c *gin.Context) {
 	tid := c.Param("tid")
 	uid := c.GetString("uid")
 
-	// Allow delete if user owns the task OR is in a group that shares the task owner's tasks
 	result := s.db.Where("tid = ? AND (uid = ? OR uid IN (SELECT uid FROM group_members WHERE gid IN (SELECT gid FROM group_members WHERE uid = ?)))", tid, uid, uid).Delete(&model.HotmethodTask{})
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"code": 4040002, "message": "task not found or no permission"})
 		return
 	}
 
-	// Also soft-delete related suggestions
 	s.db.Where("tid = ?", tid).Delete(&model.AnalysisSuggestion{})
 
-	// Clean up COS files
 	if s.storage != nil {
 		ctx := context.Background()
 		keys, _ := s.storage.ListObjects(ctx, tid+"/")
@@ -249,11 +245,17 @@ func (s *APIServer) RetryTask(c *gin.Context) {
 		return
 	}
 
-	// Transition back to PENDING
 	if err := s.updateTaskStatus(context.Background(), tid, model.TaskStatusPending, "用户触发重试"); err != nil {
 		s.logger.Error("retry task status update", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 5000003, "message": err.Error()})
 		return
+	}
+
+	// Re-dispatch the task
+	if s.grpcCC != nil {
+		var req CreateTaskReq
+		json.Unmarshal([]byte(oldTask.RequestParams), &req)
+		go s.dispatchTask(tid, req)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"tid": tid}})
@@ -273,20 +275,39 @@ func (s *APIServer) ListAgents(c *gin.Context) {
 
 func (s *APIServer) StatAgent(c *gin.Context) {
 	ip := c.Query("target_ip")
-	if ip == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"code": 4000003, "message": "target_ip required"})
-		return
+
+	// Try gRPC proxy to drop_server for real-time data
+	if s.grpcCC != nil {
+		client := pb.NewControlClient(s.grpcCC)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		resp, err := client.StatAgent(ctx, &pb.StatAgentRequest{TargetIp: ip})
+		if err == nil {
+			agents := make([]gin.H, 0, len(resp.Agents))
+			for _, a := range resp.Agents {
+				agents = append(agents, gin.H{
+					"hostname": a.HostName,
+					"ip_addr":  a.IpAddr,
+					"online":   a.Online,
+					"uid":      a.Uid,
+					"version":  a.AgentVersion,
+				})
+			}
+			c.JSON(http.StatusOK, gin.H{"code": 0, "data": agents})
+			return
+		}
+		s.logger.Warn("StatAgent gRPC failed, falling back to PG", zap.Error(err))
 	}
 
-	// In production, this proxies to drop_server via gRPC StatAgent
-	// For now return agent_info from PG
-	var agent model.AgentInfo
-	if err := s.db.Where("ip_addr = ?", ip).First(&agent).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"code": 4040003, "message": "agent not found"})
-		return
+	// Fallback to PG
+	var agents []model.AgentInfo
+	if ip != "" {
+		s.db.Where("ip_addr = ?", ip).Find(&agents)
+	} else {
+		s.db.Find(&agents)
 	}
-
-	c.JSON(http.StatusOK, gin.H{"code": 0, "data": agent})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": agents})
 }
 
 // ==================== COS Files ====================
@@ -338,7 +359,6 @@ func (s *APIServer) CreateGroup(c *gin.Context) {
 		return
 	}
 
-	// Add owner as member
 	s.db.Create(&model.GroupMember{Gid: group.Gid, UID: uid})
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": group})
@@ -420,14 +440,13 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 	uid := c.GetString("uid")
 	tid := genTID()
 
-	// Persist to multi_tasks as a scheduled task
 	mt := model.MultiTasks{
-		TID:         tid,
-		SubTIDs:     "[]",
-		Type:        req.Type,
-		Status:      model.TaskStatusPending,
+		TID:            tid,
+		SubTIDs:        "[]",
+		Type:           req.Type,
+		Status:         model.TaskStatusPending,
 		AnalysisStatus: model.AnalysisStatusPending,
-		TriggerType: model.TriggerCron,
+		TriggerType:    model.TriggerCron,
 	}
 	if err := s.db.Create(&mt).Error; err != nil {
 		s.logger.Error("create schedule task", zap.Error(err))
@@ -435,7 +454,6 @@ func (s *APIServer) CreateScheduleTask(c *gin.Context) {
 		return
 	}
 
-	// Cron dispatch is deferred to Phase 7
 	s.logger.Info("schedule task created (cron dispatch pending Phase 7)",
 		zap.String("tid", tid),
 		zap.String("uid", uid),
@@ -465,15 +483,44 @@ func genTID() string {
 // dispatchTask sends the task to drop_server via gRPC ControlService.CreateTask.
 // On failure it marks the task as FAILED with the error reason.
 func (s *APIServer) dispatchTask(tid string, req CreateTaskReq) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// TODO: call pb.NewControlServiceClient(s.grpcCC).CreateTask(ctx, req) when proto is wired
-	// For now, report failure since the proto-generated stub is not yet integrated
-	_ = ctx
-	reason := "gRPC ControlService client not yet integrated — dispatch stub"
-	s.logger.Warn("dispatch task stub called", zap.String("tid", tid))
-	if err := s.updateTaskStatus(context.Background(), tid, model.TaskStatusFailed, reason); err != nil {
-		s.logger.Error("mark task failed on dispatch", zap.Error(err))
+	client := pb.NewControlClient(s.grpcCC)
+
+	pbReq := &pb.CreateTaskRequest{
+		TargetIp: req.TargetIP,
+		Service:  "hotmethod",
+		TaskDesc: &pb.TaskDesc{
+			TaskId:       tid,
+			TaskType:     uint32(req.Type),
+			ProfilerType: uint32(req.ProfilerType),
+			SampleArgv: &pb.RecordArgv{
+				Hz:       uint32(req.Hz),
+				Duration: uint64(req.Duration),
+				Pid:      int32(req.PID),
+			},
+		},
 	}
+
+	resp, err := client.CreateTask(ctx, pbReq)
+	if err != nil {
+		reason := fmt.Sprintf("gRPC ControlService.CreateTask failed: %v", err)
+		s.logger.Error("dispatch task failed", zap.String("tid", tid), zap.Error(err))
+		if uerr := s.updateTaskStatus(context.Background(), tid, model.TaskStatusFailed, reason); uerr != nil {
+			s.logger.Error("mark task failed on dispatch", zap.Error(uerr))
+		}
+		return
+	}
+
+	if !resp.Success {
+		reason := fmt.Sprintf("drop_server rejected task: %s", resp.Message)
+		s.logger.Warn("task rejected by drop_server", zap.String("tid", tid), zap.String("reason", reason))
+		if uerr := s.updateTaskStatus(context.Background(), tid, model.TaskStatusFailed, reason); uerr != nil {
+			s.logger.Error("mark task failed on rejection", zap.Error(uerr))
+		}
+		return
+	}
+
+	s.logger.Info("task dispatched to drop_server", zap.String("tid", tid), zap.String("target_ip", req.TargetIP))
 }
