@@ -54,3 +54,5 @@ docker-compose.override.yml
 coverage/
 /package.json
 /package-lock.json
+apiserver/apiserver.yaml
+apiserver/bin/

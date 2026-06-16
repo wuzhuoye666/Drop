@@ -13,7 +13,7 @@ type: project
 | Phase | 名称 | 状态 | 当前Step | 最后更新 |
 |-------|------|------|----------|----------|
 | 1 | 脚手架与协议 | ✅ 已完成 | S1.1-S1.7 全部完成 | 2026-06-16 |
-| 2 | PG模型+API骨架 | ⬜ 未开始 | - | - |
+| 2 | PG模型+API骨架 | ✅ 已完成 | S2.1-S2.6 全部完成 | 2026-06-16 |
 | 3 | Agent+Server心跳与任务下发 | ⬜ 未开始 | - | - |
 | 4 | perf采集全链路 | ⬜ 未开始 | - | - |
 | 5 | eBPF采集器 | ⬜ 未开始 | - | - |
@@ -34,6 +34,17 @@ type: project
 | 1.6 | docker-compose.yml(postgres+minio) | ✅ |
 | 1.7 | Makefile全局目标 | ✅ |
 
+## Phase 2 详细Step状态
+
+| Step | 内容 | 状态 |
+|------|------|------|
+| 2.1 | GORM Model 7张表+2张审计表+AutoMigrate | ✅ |
+| 2.2 | 12个核心API(gRPC先mock) | ✅ |
+| 2.3 | 鉴权中间件(Cookie+dev-mode) | ✅ |
+| 2.4 | MinIO Storage接口实现 | ✅ |
+| 2.5 | 结构化日志+access log中间件 | ✅ |
+| 2.6 | Go单测框架搭建 | ✅ |
+
 ## 需求完成度汇总
 
 | 类别 | 总数 | 已完成 | 完成率 |
@@ -48,7 +59,7 @@ type: project
 | 组件 | 当前覆盖率 | 目标 |
 |------|-----------|------|
 | drop (C++) | 0% | ≥50% |
-| apiserver (Go) | 0% | ≥50% |
+| apiserver (Go) | ~15% (22 tests covering statemachine, handler, middleware, storage) | ≥50% |
 | analysis (Python) | 0% | ≥50% |
 | web_frontend (JS/TS) | 0% | - |
 
@@ -66,3 +77,4 @@ type: project
 |------|---------|---------|---------|
 | 2026-06-16 | 项目初始化 | 创建memory-bank、确定架构、细化实现计划 | - |
 | 2026-06-16 | Phase 1 实施 | 全部7步验收通过并提交 | - |
+| 2026-06-16 | Phase 2 实施 | 全部6步验收通过：GORM models、12个API、鉴权、MinIO存储、日志、单测 | - |

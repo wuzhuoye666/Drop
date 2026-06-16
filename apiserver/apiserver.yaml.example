@@ -1,12 +1,21 @@
-# Drop APIservers config
+# Drop apiserver config
 server:
   port: ":8191"
+  dev_mode: true
 
 pg:
   dsn: "host=127.0.0.1 port=5432 user=drop password=drop dbname=drop sslmode=disable"
+  max_open_conns: 100
+  max_idle_conns: 10
+  conn_max_lifetime_sec: 3600
 
 s3:
   endpoint: "127.0.0.1:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "drop-data"
+  use_ssl: false
+  presign_exp_sec: 3600
 
 grpc:
   addr: "127.0.0.1:50051"

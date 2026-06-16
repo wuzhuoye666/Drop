@@ -121,11 +121,11 @@ type: project
 
 ---
 
-## Phase 2：PG模型 + API骨架 `[ ]`
+## Phase 2：PG模型 + API骨架 `[x]`
 
 **目标**：apiserver 能读写PG，12个API可用（gRPC侧先mock），MinIO可读写
 
-### Step 2.1 `[ ]` GORM Model 定义7张表 + AutoMigrate
+### Step 2.1 `[x]` GORM Model 定义7张表 + AutoMigrate
 - user_info, agent_info, hotmethod_task, multi_tasks, groups, group_members, analysis_suggestion
 - 新增 task_status_history(tid, old_status, new_status, reason, timestamp) 审计表
 - agent_audit_log(id, agent_id, event_type, reason, timestamp) 审计表
@@ -139,7 +139,7 @@ type: project
 4. `psql -c "\d hotmethod_task"` 确认 status(integer), status_info(text) 字段存在
 5. `psql -c "\d task_status_history"` 确认 old_status, new_status, reason 字段存在
 
-### Step 2.2 `[ ]` 实现12个核心API（gRPC先mock）
+### Step 2.2 `[x]` 实现12个核心API（gRPC先mock）
 - 完整列表见 `architecture.md` 2.4节
 - 创建任务时：写PG(status=0 PENDING, status_info="任务已创建") → mock gRPC调用（日志打印+返回成功）
 - 所有状态迁移必须调用封装函数 `updateTaskStatus(tid, newStatus, reason)`
@@ -151,7 +151,7 @@ type: project
 3. `psql -c "SELECT status, status_info FROM hotmethod_task LIMIT 1"` → status_info 非空
 4. `psql -c "SELECT COUNT(*) FROM task_status_history"` → ≥1（创建时写了一条PENDING记录）
 
-### Step 2.3 `[ ]` 鉴权中间件
+### Step 2.3 `[x]` 鉴权中间件
 - Cookie取 drop_user_uid / drop_user_name
 - 无cookie → 返回 401 `{code: 4010001, data: {location: "..."}}`
 - 开发模式flag `-dev-mode` 可跳过鉴权（自动注入test用户）
@@ -161,7 +161,7 @@ type: project
 2. 带cookie请求 `curl -s -b "drop_user_uid=test;drop_user_name=tester" http://localhost:8191/api/v1/tasks | jq .code` → 0
 3. dev模式启动 `./apiserver -c config.yaml -dev-mode` → 无cookie请求也返回200
 
-### Step 2.4 `[ ]` MinIO Storage接口实现
+### Step 2.4 `[x]` MinIO Storage接口实现
 - interface Storage: Put(key, reader) / Get(key) → io.ReadCloser / PreSign(key, expire) → url / Delete(key) / IsExist(key) → bool
 - MinIO实现类，启动时自动 CreateBucketIfNotExists("drop-data")
 
@@ -171,7 +171,7 @@ type: project
 3. PreSign返回的URL在浏览器中可直接下载文件
 4. PreSign URL过期时间 ≥ 1小时
 
-### Step 2.5 `[ ]` 结构化日志 + access log中间件
+### Step 2.5 `[x]` 结构化日志 + access log中间件
 - Zap JSON logger：全局初始化，所有组件使用
 - access log中间件：记录 method, path, status, latency_ms, body（>10KB截断）
 
@@ -180,7 +180,7 @@ type: project
 2. access log为JSON格式，包含 `method`, `path`, `status`, `latency_ms` 字段
 3. 上传 >10KB body时，日志中body被截断且有标记
 
-### Step 2.6 `[ ]` 各组件单测框架搭建
+### Step 2.6 `[x]` 各组件单测框架搭建
 - C++: Google Test（CMake FetchContent）
 - Go: `testing` + `testify/assert`
 - Python: `pytest` + `pytest-cov`

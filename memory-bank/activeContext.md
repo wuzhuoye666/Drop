@@ -10,10 +10,10 @@ type: project
 
 ## 当前聚焦
 
-- **组件**：全局
-- **Phase**：Phase 1 ✅ 已完成
-- **正在做**：Phase 1 全部7个Step验收通过并提交
-- **下一步**：开始 Phase 2 Step 2.1 — GORM Model 定义7张表 + AutoMigrate
+- **组件**：apiserver (Go)
+- **Phase**：Phase 2 ✅ 已完成
+- **正在做**：已完成 Phase 2 全部6步验收
+- **下一步**：开始 Phase 3 Step 3.1 — HealthCheck Service 心跳+拉取任务
 
 ## 当前阻塞
 
@@ -21,17 +21,20 @@ type: project
 
 ## 本次会话需注意
 
-- Phase 1 全部验收通过: 目录骨架、5个proto、C++空壳编译、Go apiserver /healthz、React build、docker-compose postgres+minio healthy、Makefile proto/build/test/clean
-- Go toolchain 自动升级到 1.25（gin v1.12 强制），grpc-go v1.81
-- proto import 路径需用相对路径(common.proto)，不要用全路径(drop/common/proto/common.proto)
-- 生成的 pb 文件输出到 drop/build/gen(C++) 和 apiserver/proto(Go)，已在 .gitignore
+- GORM `Updates` 会修改传入的结构体，`oldStatus` 需在 `Updates` 之前保存
+- Go v1.21 安装在 /usr/local/go/bin，需要 `export PATH=$PATH:/usr/local/go/bin`
+- `go build -o apiserver .` 会与 proto 目录名冲突，改用 `go build -o bin/apiserver .`
+- dev-mode 通过 `-dev-mode` flag 或 `server.dev_mode: true` 在 YAML 中设置
+- grpcCC 非nil（NewClient是lazy的），所以dispatchTask goroutine会触发mock逻辑
 
 ## 上次会话摘要
 
-- 创建monorepo全部目录骨架(.gitkeep占位)
-- 编写5个proto: common/healthcheck/hotmethod/control/init，字段与产品文档1.3节一致
-- C++ CMake编译drop_server(4个gRPC service UNIMPLEMENTED)和drop_agent(gflags解析退出)
-- Go apiserver: Gin+Viper+Zap, /healthz返回ok, JSON日志
-- React(Vite+TS+TDesign+Zustand+Axios+D3), npm run build通过
-- docker-compose: postgres14+minio, healthcheck验证healthy
-- Makefile: proto/build/test/demo/clean全部目标可用
+- 完成 Phase 2 全部6个Step
+- GORM Model: 7张业务表 + 2张审计表（task_status_history, agent_audit_history），AutoMigrate成功
+- 12个API全部可实现：auth/check, users, agents, agent/stat, tasks(CRUD+retry), cosfiles, group(CRUD+member+agent), schedule/task
+- updateTaskStatus 完整实现了 SELECT FOR UPDATE → 校验迁移 → UPDATE → INSERT history → 同事务commit
+- 修复关键bug：Updates后task.Status被修改，需提前保存oldStatus
+- MinIO Storage接口实现：Put/Get/PreSign/Delete/IsExist/ListObjects，bucket自动创建
+- 鉴权中间件：Cookie取drop_user_uid/drop_user_name，无cookie→401，dev-mode自动注入
+- 结构化access log：记录method/path/status/latency_ms，>10KB body截断
+- Go单测：statemachine(14组迁移测试) + handler(4组集成测试) + middleware(3组) + storage(1组) 全部PASS
