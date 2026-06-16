@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libbpf-dev clang-17 llvm-17 \
     linux-headers-generic \
+    libgtest-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src/drop
