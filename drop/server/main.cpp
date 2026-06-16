@@ -1,5 +1,6 @@
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/health_check_service_interface.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
 
 #include "common.pb.h"
 #include "healthcheck.grpc.pb.h"
@@ -106,6 +107,7 @@ int main(int argc, char** argv) {
   InitServiceImpl        init_svc;
 
   grpc::EnableDefaultHealthCheckService(true);
+  grpc::reflection::InitProtoReflectionServerBuilderPlugin();
 
   ServerBuilder builder;
   builder.AddListeningPort(addr, grpc::InsecureServerCredentials());
