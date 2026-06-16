@@ -1,0 +1,5 @@
+drop/build/
+drop/common/bpf/*.o
+drop/common/bpf/vmlinux.h
+.git/
+memory-bank/

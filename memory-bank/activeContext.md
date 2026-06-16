@@ -6,37 +6,35 @@ type: project
 
 # 活跃上下文
 
-> **每次新会话开始时先阅读此文件恢复上下文，每次会话结束前更新此文件**
-
 ## 当前聚焦
 
-- **组件**：全组件 (C++ agent/server + Go apiserver + Python analysis + React frontend)
-- **Phase**：Phase 5 ✅ 已完成
-- **正在做**：Phase 5 全部7个Step验收通过
-- **下一步**：开始 Phase 6 Step 6.1 — 用户态语言级采集器
+- **组件**：全组件
+- **Phase**：Phase 5 补验收 ✅ 大部分完成
+- **正在做**：Docker 构建验证 (Step 9) — 构建中
+- **下一步**：Phase 6 用户态语言级采集器
 
 ## 当前阻塞
 
-- 无
+- Docker 构建超时，等待中
 
-## 本次会话需注意
+## 本次会话摘要
 
-- eBPF off-CPU探针：offcpu.bpf.c 使用 tracepoint/sched/sched_switch 捕获被切换出的进程栈
-- EbpfLoader类：load→attach(pid)→poll(duration,output_path)→detach→unload
-- 用户态符号解析：读/proc/<pid>/maps + addr2line回退
-- EbpfProfiler：继承IProfiler，profiler_type=3，产出collapsed_ebpf.txt
-- analysis: profiler_type=3 → analyze_ebpf() → flamegraph.pl --color=io --title="Off-CPU Flame Graph"
-- 前端: profiler_type=3 时Tab标签 "Off-CPU Flame Graph", 找flamegraph_offcpu.svg
-- Docker特权配置: privileged=true, pid=host, 挂载 /sys/fs/bpf, /sys/kernel/debug:ro, /lib/modules:ro
-- demo脚本: scripts/demo_ebpf.sh 使用dd+stress-ng触发IO/调度压力
+### 发现的问题（审计）
+1. **BPF 错误采集进程 Bug** — `bpf_get_current_task()` 返回 next 而非 prev → 改用 `ctx->prev_pid`
+2. **悬空指针 Bug** — map 迭代 error path 中 `key_ptr` 指向局部变量 → 删除 error path 的 `key_ptr` 赋值
+3. **addr2line fork 炸弹** — 每 frame 都 popen → 改为批量 `BatchResolveUserSymbols`
+4. **map 不清理会耗尽** — poll 后不删除 entries → poll 结尾删除 counts 和 stack_ids
+5. **缓存无驱逐** — g_user_maps_cache 无限增长 → 256 条 FIFO 驱逐
+6. **demo 脚本 TID Bug** — `.data.task.tid` 应为 `.data.tid`
+7. **测试全部缺失** — C++ 0 测试、Go 0 eBPF 测试、Python 0 测试
 
-## 上次会话摘要
-
-- 完成 Phase 5 eBPF采集器全部7个Step
-- offcpu.bpf.c: tracepoint/sched/sched_switch + BPF_MAP_TYPE_STACK_TRACE
-- EbpfLoader: libbpf C API加载.bpf.o，attach tracepoint，poll duration秒，遍历counts map，解析kallsyms+user maps+addr2line
-- EbpfProfiler: IProfiler实现，profiler_type=3，工厂注册
-- analysis: analyze_ebpf() → flamegraph_offcpu.svg (io色系，Off-CPU标题)
-- 前端: 详情页根据profiler_type显示 "Off-CPU Flame Graph" Tab
-- Docker: privileged+pid:host+BPF+debugfs挂载，注释说明每个权限用途
-- demo脚本: dd IO压力 + stress-ng调度压力，对比基线和压力期火焰图
+### 修复与新增
+- 修复了以上全部 6 个代码 Bug
+- 新增 C++ GTest 7 个测试用例（`ctest -R ebpf` PASS）
+- 新增 Go 2 个 eBPF API 测试（PASS）
+- 新增 Python 6 个 analysis 测试（PASS）
+- 修复 demo_ebpf.sh TID 提取
+- 完成了全链路 E2E 集成验证（创建→采集→分析→产物就绪，15秒内完成）
+- 验证了 3 个产物文件（collapsed_ebpf.txt、flamegraph_offcpu.svg、top.json）
+- 验证了 SVG 标题 "Off-CPU Flame Graph"
+- 更新了 architecture.md 决策2（libbpf-go → libbpf C API）

@@ -40,7 +40,7 @@ create_ebpf_task() {
             \"pid\": ${pid},
             \"duration\": ${duration},
             \"hz\": 0
-        }" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('task',{}).get('tid',''))"
+        }" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('tid',''))"
 }
 
 # --- Helper: wait for analysis to complete ---

@@ -20,6 +20,8 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <deque>
+#include <set>
 
 namespace drop {
 
@@ -29,6 +31,14 @@ struct stack_key {
   uint32_t tgid;
   int user_stack_id;
   int kern_stack_id;
+
+  // Required for std::map key
+  bool operator<(const stack_key& o) const {
+    if (pid != o.pid) return pid < o.pid;
+    if (tgid != o.tgid) return tgid < o.tgid;
+    if (user_stack_id != o.user_stack_id) return user_stack_id < o.user_stack_id;
+    return kern_stack_id < o.kern_stack_id;
+  }
 };
 
 struct EbpfLoader::Impl {
@@ -60,7 +70,6 @@ static int libbpf_print_fn(enum libbpf_print_level level,
     return 0;
   char buf[512];
   vsnprintf(buf, sizeof(buf), format, args);
-  // Trim trailingnewline
   size_t len = strlen(buf);
   while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r'))
     buf[--len] = '\0';
@@ -79,7 +88,6 @@ bool EbpfLoader::load(const std::string& bpf_o_path, std::string* error_msg) {
 
   libbpf_set_print(libbpf_print_fn);
 
-  // Open and load the BPF object
   impl_->obj = bpf_object__open(bpf_o_path.c_str());
   if (!impl_->obj) {
     *error_msg = "Failed to open BPF object: " + bpf_o_path + " (" + std::string(strerror(errno)) + ")";
@@ -93,7 +101,6 @@ bool EbpfLoader::load(const std::string& bpf_o_path, std::string* error_msg) {
     return false;
   }
 
-  // Find the program
   impl_->prog = bpf_object__find_program_by_name(impl_->obj, "trace_sched_switch");
   if (!impl_->prog) {
     *error_msg = "Failed to find BPF program 'trace_sched_switch'";
@@ -102,7 +109,6 @@ bool EbpfLoader::load(const std::string& bpf_o_path, std::string* error_msg) {
     return false;
   }
 
-  // Find the maps
   impl_->counts_map = bpf_object__find_map_by_name(impl_->obj, "counts");
   impl_->stack_map = bpf_object__find_map_by_name(impl_->obj, "stack_traces");
   impl_->target_pid_map = bpf_object__find_map_by_name(impl_->obj, "target_pid");
@@ -134,7 +140,6 @@ bool EbpfLoader::attach(int target_pid, std::string* error_msg) {
     return false;
   }
 
-  // Set PID filter if configured and map exists
   if (target_pid > 0 && impl_->target_pid_fd >= 0) {
     uint32_t key = 0;
     uint32_t val = static_cast<uint32_t>(target_pid);
@@ -145,7 +150,6 @@ bool EbpfLoader::attach(int target_pid, std::string* error_msg) {
     LOG(INFO) << "EbpfLoader: filtering for PID " << target_pid;
   }
 
-  // Attach the tracepoint
   impl_->link = bpf_program__attach(impl_->prog);
   if (!impl_->link) {
     *error_msg = "Failed to attach BPF program: " + std::string(strerror(errno));
@@ -157,7 +161,8 @@ bool EbpfLoader::attach(int target_pid, std::string* error_msg) {
   return true;
 }
 
-// Read /proc/kallsyms to build kernel symbol table
+// ── Kernel symbol resolution ────────────────────────────────────────
+
 static std::map<uint64_t, std::string> ReadKallsyms() {
   std::map<uint64_t, std::string> syms;
   std::ifstream f("/proc/kallsyms");
@@ -167,7 +172,6 @@ static std::map<uint64_t, std::string> ReadKallsyms() {
   }
   std::string line;
   while (std::getline(f, line)) {
-    // Format: addr type name [module]
     std::istringstream iss(line);
     uint64_t addr;
     char type;
@@ -179,10 +183,8 @@ static std::map<uint64_t, std::string> ReadKallsyms() {
   return syms;
 }
 
-// Resolve a kernel address to a symbol name
 static std::string ResolveKsym(const std::map<uint64_t, std::string>& syms,
                                 uint64_t addr) {
-  // Find the largest key <= addr
   auto it = syms.upper_bound(addr);
   if (it == syms.begin())
     return "[unknown]";
@@ -190,16 +192,19 @@ static std::string ResolveKsym(const std::map<uint64_t, std::string>& syms,
   return it->second;
 }
 
-// User-space symbol: one entry per memory-mapped file
+// ── User-space symbol resolution (batched addr2line) ────────────────
+
 struct UserSym {
   uint64_t start;
   uint64_t end;
-  uint64_t offset;  // file offset
-  std::string path; // e.g. /usr/lib/libc.so.6
+  uint64_t offset;
+  std::string path;
 };
 
-// Read memory mappings for a PID. Caches by PID.
+// Cache with bounded size and TTL-style eviction
+static constexpr size_t kMaxUserMapsCache = 256;
 static std::map<uint32_t, std::vector<UserSym>> g_user_maps_cache;
+static std::deque<uint32_t> g_user_maps_lru;
 static std::mutex g_user_maps_mu;
 
 static std::vector<UserSym> ReadUserMaps(uint32_t pid) {
@@ -217,7 +222,6 @@ static std::vector<UserSym> ReadUserMaps(uint32_t pid) {
 
   std::string line;
   while (std::getline(f, line)) {
-    // Format: start-end perms offset dev inode pathname
     UserSym sym = {};
     char perms[5] = {};
     uint64_t inode = 0;
@@ -225,52 +229,117 @@ static std::vector<UserSym> ReadUserMaps(uint32_t pid) {
     auto idx = line.find('/');
     if (idx == std::string::npos) continue;
 
-    // Parse the range and offset before the path
     sscanf(line.c_str(), "%lx-%lx %4s %lx %7s %lu",
            &sym.start, &sym.end, perms, &sym.offset, dev, &inode);
     sym.path = line.substr(idx);
     while (!sym.path.empty() && (sym.path.back() == '\n' || sym.path.back() == '\r'))
       sym.path.pop_back();
-    if (perms[0] != 'r') continue; // skip non-readable mappings
-    // Only keep executable mappings (likely code)
-    if (perms[2] != 'x') continue;
+    if (perms[0] != 'r' || perms[2] != 'x') continue;
     result.push_back(sym);
   }
 
   std::lock_guard<std::mutex> lk(g_user_maps_mu);
+  // Evict oldest entry if cache is full
+  if (g_user_maps_cache.size() >= kMaxUserMapsCache && !g_user_maps_lru.empty()) {
+    uint32_t oldest = g_user_maps_lru.front();
+    g_user_maps_lru.pop_front();
+    g_user_maps_cache.erase(oldest);
+  }
   g_user_maps_cache[pid] = result;
+  g_user_maps_lru.push_back(pid);
   return result;
 }
 
-// Resolve user-space address to a symbol-like string
-static std::string ResolveUserFrame(uint32_t pid, uint64_t addr) {
-  // Try addr2line for best symbol resolution (available on most Linux systems)
-  auto maps = ReadUserMaps(pid);
-  for (auto& m : maps) {
-    if (addr >= m.start && addr < m.end) {
-      uint64_t file_offset = addr - m.start + m.offset;
-      auto slash = m.path.rfind('/');
-      std::string basename = (slash != std::string::npos)
-          ? m.path.substr(slash + 1) : m.path;
-      // Optionally use addr2line for proper symbol names
-      char cmd[256];
-      snprintf(cmd, sizeof(cmd), "addr2line -e %s -f 0x%lx 2>/dev/null",
-               m.path.c_str(), (unsigned long)file_offset);
-      FILE* pipe = popen(cmd, "r");
-      if (pipe) {
-        char buf[256];
+// Batch resolve user-space symbols using a single addr2line invocation per binary.
+// Collects all (path, file_offset) pairs first, groups by path, then calls
+// addr2line once per binary with all offsets as arguments.
+static std::map<std::pair<std::string, uint64_t>, std::string>
+BatchResolveUserSymbols(
+    const std::vector<std::pair<std::string, uint64_t>>& to_resolve) {
+  std::map<std::pair<std::string, uint64_t>, std::string> result;
+
+  // Group by binary path
+  std::map<std::string, std::vector<uint64_t>> by_path;
+  for (auto& [path, offset] : to_resolve) {
+    by_path[path].push_back(offset);
+  }
+
+  for (auto& [path, offsets] : by_path) {
+    // Build addr2line command with all offsets
+    // Limit to 512 addresses per invocation to avoid ARG_MAX
+    size_t start = 0;
+    while (start < offsets.size()) {
+      size_t end = std::min(start + 512, offsets.size());
+      std::string cmd = "addr2line -e " + path + " -f";
+      for (size_t i = start; i < end; ++i) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), " 0x%lx", (unsigned long)offsets[i]);
+        cmd += buf;
+      }
+      cmd += " 2>/dev/null";
+
+      FILE* pipe = popen(cmd.c_str(), "r");
+      if (!pipe) {
+        // Fallback: basename+offset for all in this batch
+        auto slash = path.rfind('/');
+        std::string basename = (slash != std::string::npos)
+            ? path.substr(slash + 1) : path;
+        for (size_t i = start; i < end; ++i) {
+          char buf[128];
+          snprintf(buf, sizeof(buf), "%s+0x%lx", basename.c_str(),
+                   (unsigned long)offsets[i]);
+          result[{path, offsets[i]}] = buf;
+        }
+        start = end;
+        continue;
+      }
+
+      // addr2line -f outputs two lines per address: function name, then file:line
+      char buf[512];
+      for (size_t i = start; i < end; ++i) {
         std::string func_name;
         if (fgets(buf, sizeof(buf), pipe)) {
           func_name = buf;
           while (!func_name.empty() && (func_name.back() == '\n' || func_name.back() == '\r'))
             func_name.pop_back();
         }
-        pclose(pipe);
+        // Skip the file:line line
+        (void)fgets(buf, sizeof(buf), pipe);
+
         if (!func_name.empty() && func_name != "??" && func_name != "?") {
-          return func_name;
+          result[{path, offsets[i]}] = func_name;
+        } else {
+          // Fallback to basename+offset
+          auto slash = path.rfind('/');
+          std::string basename = (slash != std::string::npos)
+              ? path.substr(slash + 1) : path;
+          char fbuf[128];
+          snprintf(fbuf, sizeof(fbuf), "%s+0x%lx", basename.c_str(),
+                   (unsigned long)offsets[i]);
+          result[{path, offsets[i]}] = fbuf;
         }
       }
-      // Fallback: basename+offset
+      pclose(pipe);
+      start = end;
+    }
+  }
+  return result;
+}
+
+// Single-frame resolution (for the non-batched code path)
+static std::string ResolveUserFrame(
+    uint32_t pid, uint64_t addr,
+    const std::map<std::pair<std::string, uint64_t>, std::string>& resolved) {
+  auto maps = ReadUserMaps(pid);
+  for (auto& m : maps) {
+    if (addr >= m.start && addr < m.end) {
+      uint64_t file_offset = addr - m.start + m.offset;
+      auto it = resolved.find({m.path, file_offset});
+      if (it != resolved.end()) return it->second;
+      // Fallback
+      auto slash = m.path.rfind('/');
+      std::string basename = (slash != std::string::npos)
+          ? m.path.substr(slash + 1) : m.path;
       char buf[128];
       snprintf(buf, sizeof(buf), "%s+0x%lx", basename.c_str(),
                (unsigned long)file_offset);
@@ -281,6 +350,8 @@ static std::string ResolveUserFrame(uint32_t pid, uint64_t addr) {
   snprintf(buf, sizeof(buf), "[unknown]:0x%lx", (unsigned long)addr);
   return std::string(buf);
 }
+
+// ── Poll: collect, resolve, cleanup ─────────────────────────────────
 
 bool EbpfLoader::poll(int duration_sec, const std::string& output_path,
                        std::string* error_msg) {
@@ -297,89 +368,122 @@ bool EbpfLoader::poll(int duration_sec, const std::string& output_path,
   // Read kernel symbol table
   auto ksyms = ReadKallsyms();
 
-  // Iterate over counts map and build folded stacks
-  // Aggregated output: stack_string → total_count
-  std::map<std::string, uint64_t> folded;
+  // ── Phase 1: collect all counts keys and stack data ─────────────
+  std::vector<stack_key> all_keys;
+  std::map<stack_key, uint64_t> key_counts;
+  std::set<int> used_stack_ids;
 
-  stack_key key = {};
-  struct bpf_map_iter* iter = nullptr;
-  // We iterate by manually getting all keys
-  uint32_t next_key = 0;
-  std::vector<stack_key> keys;
+  {
+    stack_key prev_key = {};
+    bool first = true;
+    while (true) {
+      stack_key next_key = {};
+      void* prev_ptr = first ? nullptr : &prev_key;
+      int err = bpf_map_get_next_key(impl_->counts_fd, prev_ptr, &next_key);
+      if (err) break;
+      first = false;
 
-  // Get all keys from the counts map
-  stack_key cur_key = {};
-  int fd = impl_->counts_fd;
-  void* key_ptr = &cur_key;
+      uint64_t count = 0;
+      if (bpf_map_lookup_elem(impl_->counts_fd, &next_key, &count) != 0 || count == 0) {
+        prev_key = next_key;
+        continue;
+      }
 
-  // Use bpf_map_get_next_key to iterate
-  while (true) {
-    stack_key next_key_val = {};
-    int err = bpf_map_get_next_key(fd, key_ptr, &next_key_val);
-    if (err) break;
+      all_keys.push_back(next_key);
+      key_counts[next_key] = count;
 
-    // Look up the value for this key
-    uint64_t count = 0;
-    err = bpf_map_lookup_elem(fd, &next_key_val, &count);
-    if (err) {
-      key_ptr = &next_key_val;
-      continue;
+      // Track used stack IDs for cleanup
+      if (next_key.kern_stack_id >= 0) used_stack_ids.insert(next_key.kern_stack_id);
+      if (next_key.user_stack_id >= 0) used_stack_ids.insert(next_key.user_stack_id);
+
+      prev_key = next_key;
     }
-
-    if (count > 0) {
-      // Build the folded stack string
-      std::string stack_str;
-
-      // Get kernel stack frames
-      if (next_key_val.kern_stack_id >= 0) {
-        uint64_t kstack[64] = {};
-        int stack_id = next_key_val.kern_stack_id;
-        if (bpf_map_lookup_elem(impl_->stack_fd, &stack_id, kstack) == 0) {
-          // Kernel stack frames come in reverse order (deepest first)
-          // We reverse to get top-down order for flame graph
-          std::vector<std::string> frames;
-          for (int i = 0; i < 64 && kstack[i] != 0; i++) {
-            frames.push_back(ResolveKsym(ksyms, kstack[i]));
-          }
-          // Reverse: bottom of stack first
-          std::reverse(frames.begin(), frames.end());
-          for (auto& f : frames) {
-            if (!stack_str.empty()) stack_str += ";";
-            stack_str += f;
-          }
-        }
-      }
-
-      // Get user stack frames
-      if (next_key_val.user_stack_id >= 0) {
-        uint64_t ustack[64] = {};
-        int stack_id = next_key_val.user_stack_id;
-        if (bpf_map_lookup_elem(impl_->stack_fd, &stack_id, ustack) == 0) {
-          std::vector<std::string> frames;
-          for (int i = 0; i < 64 && ustack[i] != 0; i++) {
-            frames.push_back(ResolveUserFrame(next_key_val.tgid, ustack[i]));
-          }
-          std::reverse(frames.begin(), frames.end());
-          for (auto& f : frames) {
-            if (!stack_str.empty()) stack_str += ";";
-            stack_str += f;
-          }
-        }
-      }
-
-      if (stack_str.empty()) {
-        stack_str = "[unknown]";
-      }
-
-      folded[stack_str] += count;
-    }
-
-    // Move to next key
-    cur_key = next_key_val;
-    key_ptr = &cur_key;
   }
 
-  // Write folded stack output
+  // ── Phase 2: collect all user addresses for batch resolution ────
+  std::vector<std::pair<std::string, uint64_t>> to_resolve;
+
+  // Map from (pid, user_stack_id) → vector of frame addresses
+  // We need to collect them first, then batch-resolve
+  std::map<std::pair<uint32_t, int>, std::vector<uint64_t>> user_stacks;
+
+  for (auto& key : all_keys) {
+    if (key.user_stack_id >= 0) {
+      uint64_t ustack[64] = {};
+      int stack_id = key.user_stack_id;
+      if (bpf_map_lookup_elem(impl_->stack_fd, &stack_id, ustack) == 0) {
+        std::vector<uint64_t> addrs;
+        for (int i = 0; i < 64 && ustack[i] != 0; i++) {
+          addrs.push_back(ustack[i]);
+        }
+        user_stacks[{key.tgid, key.user_stack_id}] = addrs;
+
+        // Collect (path, file_offset) for batch resolution
+        auto maps = ReadUserMaps(key.tgid);
+        for (auto addr : addrs) {
+          for (auto& m : maps) {
+            if (addr >= m.start && addr < m.end) {
+              uint64_t file_offset = addr - m.start + m.offset;
+              to_resolve.push_back({m.path, file_offset});
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Batch resolve all user symbols
+  auto resolved_syms = BatchResolveUserSymbols(to_resolve);
+
+  // ── Phase 3: build folded stacks ────────────────────────────────
+  std::map<std::string, uint64_t> folded;
+
+  for (auto& key : all_keys) {
+    uint64_t count = key_counts[key];
+    std::string stack_str;
+
+    // Kernel stack frames
+    if (key.kern_stack_id >= 0) {
+      uint64_t kstack[64] = {};
+      int stack_id = key.kern_stack_id;
+      if (bpf_map_lookup_elem(impl_->stack_fd, &stack_id, kstack) == 0) {
+        std::vector<std::string> frames;
+        for (int i = 0; i < 64 && kstack[i] != 0; i++) {
+          frames.push_back(ResolveKsym(ksyms, kstack[i]));
+        }
+        std::reverse(frames.begin(), frames.end());
+        for (auto& f : frames) {
+          if (!stack_str.empty()) stack_str += ";";
+          stack_str += f;
+        }
+      }
+    }
+
+    // User stack frames (use pre-resolved symbols)
+    if (key.user_stack_id >= 0) {
+      auto it = user_stacks.find({key.tgid, key.user_stack_id});
+      if (it != user_stacks.end()) {
+        std::vector<std::string> frames;
+        for (auto addr : it->second) {
+          frames.push_back(ResolveUserFrame(key.tgid, addr, resolved_syms));
+        }
+        std::reverse(frames.begin(), frames.end());
+        for (auto& f : frames) {
+          if (!stack_str.empty()) stack_str += ";";
+          stack_str += f;
+        }
+      }
+    }
+
+    if (stack_str.empty()) {
+      stack_str = "[unknown]";
+    }
+
+    folded[stack_str] += count;
+  }
+
+  // ── Phase 4: write output ───────────────────────────────────────
   std::ofstream out(output_path);
   if (!out.is_open()) {
     *error_msg = "Failed to open output file: " + output_path;
@@ -391,7 +495,20 @@ bool EbpfLoader::poll(int duration_sec, const std::string& output_path,
   }
   out.close();
 
-  LOG(INFO) << "EbpfLoader: wrote " << folded.size() << " stacks to " << output_path;
+  // ── Phase 5: cleanup BPF maps to prevent exhaustion ─────────────
+  // Delete all counts keys
+  for (auto& key : all_keys) {
+    bpf_map_delete_elem(impl_->counts_fd, &key);
+  }
+
+  // Delete used stack trace entries
+  for (int stack_id : used_stack_ids) {
+    bpf_map_delete_elem(impl_->stack_fd, &stack_id);
+  }
+
+  LOG(INFO) << "EbpfLoader: wrote " << folded.size() << " stacks to " << output_path
+            << " (cleaned " << all_keys.size() << " counts + "
+            << used_stack_ids.size() << " stack IDs)";
   return true;
 }
 

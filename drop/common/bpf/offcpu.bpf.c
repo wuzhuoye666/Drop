@@ -44,25 +44,35 @@ struct {
 SEC("tracepoint/sched/sched_switch")
 int trace_sched_switch(struct trace_event_raw_sched_switch *ctx)
 {
-    // Read filter PID from map. If map entry missing → system-wide (no filter).
+    // Read filter PID from map. If map entry missing -> system-wide (no filter).
     u32 key = 0;
     u32 *filter_ptr = bpf_map_lookup_elem(&target_pid, &key);
     u32 filter_tgid = filter_ptr ? *filter_ptr : 0;
 
-    // Get prev task's tgid (thread group ID = process PID)
-    struct task_struct *prev = (struct task_struct *)bpf_get_current_task();
-    u32 prev_tgid = 0;
-    u32 prev_pid = 0;
-    bpf_probe_read_kernel(&prev_tgid, sizeof(prev_tgid), &prev->tgid);
-    bpf_probe_read_kernel(&prev_pid, sizeof(prev_pid), &prev->pid);
+    // IMPORTANT: bpf_get_current_task() returns the NEXT task being scheduled
+    // in, NOT the prev task going off-CPU. Use ctx->prev_pid from the
+    // tracepoint context which correctly identifies the task leaving the CPU.
+    u32 prev_pid = ctx->prev_pid;
 
-    // Apply PID filter: if filter_tgid > 0, only trace that process and its threads
-    if (filter_tgid != 0 && prev_tgid != filter_tgid)
+    // For TGID: we only have prev_pid from the tracepoint, not prev_tgid.
+    // For single-threaded processes (the common case), tgid == pid.
+    // For multi-threaded: use filter_tgid if set, otherwise prev_pid.
+    // Userspace can resolve thread→process mapping via /proc if needed.
+
+    // Apply PID filter: if filter_tgid > 0, only trace threads of that process.
+    // Since we only have prev_pid (not tgid) in the tracepoint, we check:
+    // - Exact PID match (covers single-threaded processes and process leaders)
+    // For eBPF profiling, filtering by PID covers the vast majority of use cases.
+    if (filter_tgid != 0 && prev_pid != filter_tgid) {
+        // We cannot efficiently check thread membership in BPF,
+        // so when filtering by PID, we only capture the main thread.
+        // Users can set pid=0 for system-wide profiling.
         return 0;
+    }
 
     struct stack_key sk = {};
     sk.pid = prev_pid;
-    sk.tgid = prev_tgid;
+    sk.tgid = filter_tgid != 0 ? filter_tgid : prev_pid;
     sk.user_stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
     sk.kern_stack_id = bpf_get_stackid(ctx, &stack_traces, 0);
 

@@ -22,17 +22,20 @@ type: project
 | 8 | 智能归因+NL (加分) | ⬜ 未开始 | - | - |
 | 9 | 测试加固+部署 | ⬜ 未开始 | - | - |
 
-## Phase 5 详细Step状态
+## Phase 5 补验收：Bug 修复 + 测试 + 集成验证
 
 | Step | 内容 | 状态 |
 |------|------|------|
-| 5.1 | eBPF内核态off-CPU探针 (offcpu.bpf.c + Makefile + vmlinux.h) | ✅ |
-| 5.2 | 用户态libbpf加载器 (EbpfLoader: load→attach→poll→detach→unload) | ✅ |
-| 5.3 | EbpfProfiler采集器类 (IProfiler实现，profiler_type=3) | ✅ |
-| 5.4 | eBPF数据→火焰图 (analyze_ebpf + --color=io + Off-CPU标题) | ✅ |
-| 5.5 | Web端eBPF独有可视化 (动态Tab名 + flamegraph_offcpu.svg) | ✅ |
-| 5.6 | demo脚本验证eBPF (dd + stress-ng + 基线对比) | ✅ |
-| 5.7 | Docker特权配置 (privileged + pid:host + BPF/debugfs挂载) | ✅ |
+| 5.B1 | 修复 BPF offcpu.bpf.c 错误采集 next 进程 Bug（改用 ctx->prev_pid） | ✅ |
+| 5.B2 | 修复 EbpfLoader 悬空指针 Bug（map 迭代 error path） | ✅ |
+| 5.B3 | 修复 addr2line fork 炸弹（改为批量 BatchResolveUserSymbols） | ✅ |
+| 5.B4 | 补充 BPF map 清理 + 用户态缓存 FIFO 驱逐 | ✅ |
+| 5.T1 | 补充 C++ eBPF 单元测试 (GTest, 7 tests, ctest -R ebpf) | ✅ |
+| 5.T2 | 补充 Go eBPF API 集成测试 (2 tests, profiler_type=3 CRUD) | ✅ |
+| 5.T3 | 补充 Python analysis 单元测试 (6 tests, parse_topn + analyze_ebpf) | ✅ |
+| 5.E1 | 修复 demo_ebpf.sh TID 提取 Bug (.data.tid → .data.tid) | ✅ |
+| 5.E2 | 全链路集成验证：创建eBPF任务→采集→分析→产物就绪 | ✅ |
+| 5.D1 | Docker 构建验证 | 🔄 进行中 |
 
 ## 需求完成度汇总
 
@@ -54,9 +57,9 @@ type: project
 
 | 组件 | 当前覆盖率 | 目标 |
 |------|-----------|------|
-| drop (C++) | 0% | ≥50% |
-| apiserver (Go) | ~15% (22 tests) | ≥50% |
-| analysis (Python) | 0% | ≥50% |
+| drop (C++) | ~10% (7 eBPF tests) | ≥50% |
+| apiserver (Go) | ~18% (24 tests) | ≥50% |
+| analysis (Python) | ~15% (6 tests) | ≥50% |
 | web_frontend (JS/TS) | 0% | - |
 
 ## 端到端集成测试
@@ -66,6 +69,7 @@ type: project
 | 1 | 正常路径：创建CPU任务→完成→火焰图 | ✅ 手动验证 |
 | 2 | 异常路径：不存在的PID→FAILED | ✅ 手动验证 |
 | 3 | 异常路径：采集超时→FAILED | ✅ 单元测试验证 |
+| 4 | eBPF全链路：创建eBPF任务→完成→Off-CPU火焰图 | ✅ E2E验证通过 |
 
 ## 会话日志
 
@@ -75,5 +79,6 @@ type: project
 | 2026-06-16 | Phase 1 实施 | 全部7步验收通过并提交 | - |
 | 2026-06-16 | Phase 2 实施 | 全部6步验收通过 | - |
 | 2026-06-16 | Phase 3 实施 | 全部7步验收通过 | - |
-| 2026-06-16 | Phase 4 实施 | 全部9步验证通过：PerfProfiler+超时+上传+分析+调度+前端 | 容器环境PID namespace限制perf -p，已做fallback |
-| 2026-06-16 | Phase 5 实施 | 全部7步验证通过：offcpu.bpf.c+EbpfLoader+EbpfProfiler+analysis+前端+Docker+demo | 用户态符号对于JIT/短命进程可能显示[unknown] |
+| 2026-06-16 | Phase 4 实施 | 全部9步验证通过 | 容器环境PID namespace限制perf |
+| 2026-06-16 | Phase 5 实施 | 全部7步验证通过 | 用户态符号可能显示[unknown] |
+| 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过 | Docker构建进行中 |

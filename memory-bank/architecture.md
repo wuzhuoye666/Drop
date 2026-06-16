@@ -93,9 +93,9 @@ PENDING ──→ RUNNING ──→ UPLOADING ──→ DONE
 **How to apply**：所有状态迁移封装为 `updateTaskStatus(tid, newStatus, reason)` 函数，内部用 `SELECT FOR UPDATE` + `UPDATE` 同一事务
 
 ### 决策2：eBPF采集器方案
-**选择**：libbpf-go绑定，用户态Go程序加载预编译BPF对象
-**Why**：C++ Agent中可用libbpf C API；bcc/bpftrace需要运行时编译且依赖LLVM，Docker镜像体积大；纯libbpf方案可预编译.bpf.o，镜像小且启动快
-**How to apply**：eBPF探针预编译为.bpf.o，随Docker镜像分发；Agent启动时根据内核版本选择匹配的对象加载
+**选择**：libbpf C API，用户态C++程序加载预编译BPF对象
+**Why**：bcc/bpftrace需要运行时编译且依赖LLVM，Docker镜像体积大；纯libbpf C API方案可预编译.bpf.o，镜像小且启动快，且与C++ Agent天然集成无需跨语言绑定
+**How to apply**：eBPF探针用clang -target bpf预编译为.bpf.o，随Docker镜像分发；EbpfLoader类封装libbpf C API实现load→attach→poll→cleanup完整生命周期；用户态符号使用批量addr2line解析避免fork炸弹
 
 ### 决策3：Analysis调度方式
 **选择**：apiserver通过 `docker exec` 或 `subprocess` 调起analysis容器

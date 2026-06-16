@@ -89,3 +89,25 @@ add_executable(drop_agent
 )
 target_link_libraries(drop_agent PRIVATE drop_common glog::glog gflags)
 target_include_directories(drop_agent PRIVATE ${GEN_DIR})
+
+# ── Tests ────────────────────────────────────────────────────────
+enable_testing()
+
+find_package(GTest REQUIRED)
+
+add_executable(drop_ebpf_test
+  tests/ebpf_loader_test.cpp
+)
+target_link_libraries(drop_ebpf_test PRIVATE
+  drop_common
+  GTest::GTest
+  GTest::gtest_main
+  glog::glog
+  pthread
+)
+target_include_directories(drop_ebpf_test PRIVATE
+  ${GEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/src
+)
+
+add_test(NAME ebpf COMMAND drop_ebpf_test)
