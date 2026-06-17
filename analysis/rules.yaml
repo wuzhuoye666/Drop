@@ -1,0 +1,69 @@
+# Drop Analysis Rules
+# Each rule has:
+#   regex: pattern to match against function name (case-insensitive)
+#   advice: suggestion text when matched
+#   severity: info | warn | critical
+
+- regex: ".*malloc.*"
+  advice: "频繁的malloc调用可能导致内存碎片和性能下降。考虑使用jemalloc/tcmalloc替代glibc malloc，或使用对象池减少分配次数。"
+  severity: warn
+
+- regex: ".*free.*"
+  advice: "大量free调用通常与malloc配对出现。检查是否存在频繁的内存分配/释放，考虑内存池或复用策略。"
+  severity: info
+
+- regex: ".*lock.*|.*mutex.*|.*pthread_mutex.*"
+  advice: "锁竞争是常见的性能瓶颈。考虑使用读写锁、无锁数据结构、或RCU机制减少临界区持有时间。"
+  severity: warn
+
+- regex: ".*spin[_]?lock.*"
+  advice: "自旋锁在竞争激烈时会浪费CPU周期。建议评估是否可用互斥锁替代，或减少临界区大小。"
+  severity: warn
+
+- regex: ".*schedule.*|.*cond_wait.*|.*futex.*"
+  advice: "大量调度/等待调用表明线程可能存在阻塞。检查I/O操作、锁竞争或不必要的同步点。"
+  severity: info
+
+- regex: ".*memcpy.*|.*memmove.*"
+  advice: "大量内存拷贝可能是数据结构设计问题。考虑零拷贝技术、引用传递、或优化数据局部性。"
+  severity: info
+
+- regex: ".*read.*|.*write.*|.*recv.*|.*send.*"
+  advice: "高频I/O操作可能是瓶颈。考虑批量读写、使用io_uring、或减少系统调用次数。"
+  severity: warn
+
+- regex: ".*epoll_wait.*|.*select.*|.*poll.*"
+  advice: "频繁的I/O多路复用调用本身开销不大，但关注其返回的就绪事件数量，判断是否有I/O风暴。"
+  severity: info
+
+- regex: ".*fork.*|.*clone.*"
+  advice: "进程创建开销较大且可能导致COW问题。考虑使用线程池或协程替代频繁创建进程。"
+  severity: warn
+
+- regex: ".*GC.*|.*gc_.*"
+  advice: "GC暂停可能影响延迟敏感型应用。考虑减少对象分配、调整GC参数、或使用无GC的语言层方案。"
+  severity: warn
+
+- regex: ".*HashMap.*|.*hash_map.*|.*unordered_map.*"
+  advice: "哈希表操作热点可能源于哈希冲突或rehash。评估装载因子、选择更好的哈希函数、或使用开放寻址实现。"
+  severity: info
+
+- regex: ".*regex.*|.*RegExp.*"
+  advice: "正则表达式可能是性能陷阱。考虑使用编译后的正则、或改用字符串匹配/状态机方案。"
+  severity: info
+
+- regex: ".*strlen.*|.*strcmp.*|.*strcpy.*"
+  advice: "频繁的字符串操作可能是瓶颈。考虑缓存字符串长度、使用更高效的字符串库、或减少不必要的拷贝。"
+  severity: info
+
+- regex: ".*serialize.*|.*deserialize.*|.*json_.*|.*protobuf.*"
+  advice: "序列化/反序列化热点。考虑使用更紧凑的二进制格式、零拷贝反序列化、或缓存序列化结果。"
+  severity: info
+
+- regex: ".*Object\\..*|.*ClassLoader.*"
+  advice: "Java对象分配或类加载热点。检查是否创建了过多临时对象，考虑对象复用或使用原始类型。"
+  severity: info
+
+- regex: ".*Connection.*|.*PreparedStatement.*|.*executeQuery.*"
+  advice: "数据库操作热点。考虑使用连接池、批量操作、预编译缓存、或减少N+1查询。"
+  severity: warn

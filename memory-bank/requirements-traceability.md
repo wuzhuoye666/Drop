@@ -24,8 +24,8 @@ type: project
 | E1 | Continuous Profiling：常驻低频采样、定时切割、按时间轴回溯任意5分钟窗口 | 扩展-Continuous | drop/common/src/continuous_profiler.cpp (常驻低频采样+5min分段flush), apiserver/server/handler.go (CreateSegment+ListSegments+GetProfileWindow), apiserver/model/model.go (ContinuousProfileSegment表), apiserver/server/scheduler.go (robfig/cron调度), web_frontend/pages/taskResult (Timeline组件+区间选择+合并火焰图) | ✅ 已完成 | 100% |
 | E2 | eBPF采集器：使用libbpf/bcc/bpftrace，至少一个内核态探针 | 扩展-多采集器1 | drop/common/bpf/offcpu.bpf.c (内核探针), drop/common/src/ebpf_loader.cpp (libbpf加载器), drop/common/src/ebpf_profiler.cpp (IProfiler实现) | ✅ 已完成 | 100% |
 | E3 | 用户态语言级采集器(py-spy/async-profiler/pprof三选一)，有自己的可视化形态 | 扩展-多采集器2 | drop/common/src/async_profiler_profiler.cpp (IProfiler实现), drop/tools/install_async_profiler.sh, analysis/drop_analyzer/hotmethod_analyzer.py (analyze_async_profiler), web_frontend/pages/taskResult (Java Flame Graph Tab), web_frontend/pages/taskList (动态event参数) | ✅ 已完成 | 100% |
-| E4 | 智能归因：火焰图+元数据+baseline结构化喂给LLM | 加分-智能归因 | analysis/analysis_advisor.py, analysis/hunyuanApi.py | ⬜ 未开始 | 0% |
-| E5 | 自然语言采集：一句话描述意图→自动识别目标/选工具/定采样率/采完总结/追问 | 加分-NL采集 | apiserver/nl_handler.go, analysis/nl_parser.py | ⬜ 未开始 | 0% |
+| E4 | 智能归因：火焰图+元数据+baseline结构化喂给LLM | 加分-智能归因 | analysis/analysis_advisor.py (规则引擎+LLM客户端), analysis/rules.yaml (16条规则), apiserver/server/handler.go (ListSuggestions), apiserver/server/nl_handler.go (NL聊天+AI回复) | ✅ 已完成 | 100% |
+| E5 | 自然语言采集：一句话描述意图→自动识别目标/选工具/定采样率/采完总结/追问 | 加分-NL采集 | analysis/nl_parser.py (NL意图解析), apiserver/server/nl_handler.go (NLChat+NLStreamSSE), web_frontend/pages/taskResult (AISuggestionPanel+NL对话框) | ✅ 已完成 | 100% |
 
 ## 工程要求
 
@@ -33,7 +33,7 @@ type: project
 |---|------|---------------|----------|------|--------|
 | G1 | docker compose up + make demo 一键跑通，10分钟内 | 交付物2 | docker-compose.yml, Makefile | ⬜ 未开始 | 0% |
 | G2 | 提交历史完整，commit message解释"为什么" | 工程要求2 | 全仓库 | ⬜ 未开始 | 0% |
-| G3 | eBPF必须真跑，现场触发异常能看到分布变化 | 工程要求3 | drop/agent/EbpfProfiler, demo脚本 | ⬜ 未开始 | 0% |
+| G3 | eBPF必须真跑，现场触发异常能看到分布变化 | 工程要求3 | drop/agent/EbpfProfiler, demo脚本 | 🔵 进行中 | 50% |
 | G4 | ≤10页设计文档 | 交付物3 | docs/design.md | ⬜ 未开始 | 0% |
 
 ## 状态图例

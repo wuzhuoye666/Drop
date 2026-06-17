@@ -19,18 +19,16 @@ type: project
 | 5 | eBPF采集器 | ✅ 已完成 | S5.1-S5.7 全部完成 | 2026-06-16 |
 | 6 | 用户态语言级采集器 | ✅ 已完成 | S6.1-S6.5 全部完成 | 2026-06-16 |
 | 7 | Continuous Profiling | ✅ 已完成 | S7.1-S7.5 全部完成 | 2026-06-17 |
-| 8 | 智能归因+NL (加分) | ⬜ 未开始 | - | - |
+| 8 | 智能归因+NL (加分) | ✅ 已完成 | S8.1-S8.3 全部完成 | 2026-06-17 |
 | 9 | 测试加固+部署 | ⬜ 未开始 | - | - |
 
-## Phase 7 详细进度
+## Phase 8 详细进度
 
 | Step | 内容 | 状态 |
 |------|------|------|
-| 7.1 | Agent continuous profiling模式 (ContinuousProfiler C++类) | ✅ |
-| 7.2 | 定时切割保存 (5min segments + PG表 + MinIO上传) | ✅ |
-| 7.3 | Web时间轴组件 (Timeline slider + 区间选择) | ✅ |
-| 7.4 | 窗口合并API (profile-window endpoint + 折叠栈merge) | ✅ |
-| 7.5 | apiserver定时任务管理 (robfig/cron + 规则CRUD) | ✅ |
+| 8.1 | 规则建议引擎 (rules.yaml + analysis_advisor.py) | ✅ |
+| 8.2 | LLM归因封装 (OpenAI兼容API + 结构化输出 + 集成分析流程 + suggestions API) | ✅ |
+| 8.3 | 自然语言入口 (nl_parser.py + nl_handler.go + NL对话SSE流) | ✅ |
 
 ## 需求完成度汇总
 
@@ -38,7 +36,7 @@ type: project
 |------|------|--------|--------|
 | 基础能力 B1-B6 | 6 | 5 | 83% |
 | 扩展能力 E1-E3 | 3 | 3 | 100% |
-| 加分项 E4-E5 | 2 | 0 | 0% |
+| 加分项 E4-E5 | 2 | 2 | 100% |
 | 工程要求 G1-G4 | 4 | 0 | 0% |
 | B1(Web下发) | ✅ | | |
 | B2(Agent采集+通知) | ✅ | | |
@@ -49,14 +47,16 @@ type: project
 | E2(eBPF采集器) | ✅ | | |
 | E3(用户态采集器) | ✅ | | |
 | E1(Continuous Profiling) | ✅ | | |
+| E4(智能归因) | ✅ | | |
+| E5(自然语言采集) | ✅ | | |
 
 ## 测试覆盖率
 
 | 组件 | 当前覆盖率 | 目标 |
 |------|-----------|------|
 | drop (C++) | ~15% (13 tests total) | ≥50% |
-| apiserver (Go) | ~20% (28 tests) | ≥50% |
-| analysis (Python) | ~20% (8 tests) | ≥50% |
+| apiserver (Go) | ~25% (34 tests) | ≥50% |
+| analysis (Python) | ~40% (39 tests) | ≥50% |
 | web_frontend (JS/TS) | 0% | - |
 
 ## 端到端集成测试
@@ -82,3 +82,4 @@ type: project
 | 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过，已提交 | Docker构建缺libgtest-dev已修复待重试 |
 | 2026-06-16 | Phase 6 实施 | async-profiler全链路实现，8个新测试通过 | 当前环境无法下载async-profiler二进制 |
 | 2026-06-17 | Phase 7 实施 | Continuous Profiling全5步实现，4个新Go测试通过 | Continuous profiling E2E待验证 |
+| 2026-06-17 | Phase 8 实施 | 智能归因+NL采集全3步实现，31个新Python测试+6个新Go测试通过 | LLM API需配置才能使用（fallback可用） |

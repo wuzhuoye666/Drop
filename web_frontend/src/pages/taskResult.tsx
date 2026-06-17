@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import * as echarts from 'echarts';
 import { useSearchParams, Link } from 'react-router-dom';
-import { getTask, listCosFiles, listSegments, getProfileWindow } from '../api';
+import { getTask, listCosFiles, listSegments, getProfileWindow, listSuggestions, nlChat, nlChatFollowup } from '../api';
 import { taskStatusLabel, taskStatusColor, analysisStatusLabel, analysisStatusColor, profilerTypeName } from '../utils';
 
 interface Task {
@@ -33,6 +33,15 @@ interface Segment {
   start_ts: number;
   end_ts: number;
   s3_key: string;
+}
+
+interface Suggestion {
+  id: number;
+  tid: string;
+  func: string;
+  suggestion: string;
+  ai_suggestion: string;
+  status: number; // 0=rule, 1=AI
 }
 
 export default function TaskResultPage() {
@@ -179,9 +188,7 @@ export default function TaskResultPage() {
       )}
 
       {tab === 'ai' && (
-        <div style={{ padding: 24, color: '#8c8c8c', textAlign: 'center' }}>
-          AI suggestion engine coming soon (Phase 8)
-        </div>
+        <AISuggestionPanel tid={tid} taskStatus={task.status} analysisStatus={task.analysis_status} />
       )}
     </div>
   );
@@ -459,5 +466,177 @@ function TopNTable({ url }: { url: string }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ── AI Suggestion Panel with NL Chat ────────────────────────────────
+
+function AISuggestionPanel({ tid, taskStatus, analysisStatus }: {
+  tid: string;
+  taskStatus: number;
+  analysisStatus: number;
+}) {
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (analysisStatus !== 2) return;
+    listSuggestions(tid).then(res => {
+      setSuggestions(res.data.data ?? []);
+    }).catch(() => {});
+  }, [tid, analysisStatus]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSend = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const msg = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: msg }]);
+    setChatLoading(true);
+
+    try {
+      const res = await nlChat(msg, tid);
+      const data = res.data.data;
+      const reply = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      // If a new task was created, start SSE stream for progress
+      if (data.tid && data.type === 'task_created') {
+        const evtSource = new EventSource(`/api/v1/nl/stream/${data.tid}`, { withCredentials: true });
+        evtSource.addEventListener('status', (e: MessageEvent) => {
+          const status = JSON.parse(e.data);
+          setChatMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'status') {
+              return [...prev.slice(0, -1), { role: 'status', content: `任务状态: ${status.status_info}` }];
+            }
+            return [...prev, { role: 'status', content: `任务状态: ${status.status_info}` }];
+          });
+        });
+        evtSource.addEventListener('complete', () => {
+          evtSource.close();
+          setChatMessages(prev => [...prev, { role: 'assistant', content: '任务分析完成！请查看上方建议。' }]);
+          listSuggestions(tid || data.tid).then(res => setSuggestions(res.data.data ?? [])).catch(() => {});
+          setChatLoading(false);
+        });
+        evtSource.addEventListener('error', (e: MessageEvent) => {
+          evtSource.close();
+          const errMsg = e.data ? JSON.parse(e.data) : '发生错误';
+          setChatMessages(prev => [...prev, { role: 'assistant', content: `错误: ${errMsg}` }]);
+          setChatLoading(false);
+        });
+        return;
+      }
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: '请求失败，请稍后重试。' }]);
+    }
+    setChatLoading(false);
+  };
+
+  // Separate rule and AI suggestions
+  const ruleSugs = suggestions.filter(s => s.status === 0);
+  const aiSummary = suggestions.find(s => s.status === 1);
+
+  let aiParsed: { diagnosis?: string; evidence?: string; recommendation?: string; confidence?: number } | null = null;
+  if (aiSummary?.ai_suggestion) {
+    try { aiParsed = JSON.parse(aiSummary.ai_suggestion); } catch { aiParsed = null; }
+  }
+
+  const isAnalysisReady = analysisStatus === 2;
+
+  return (
+    <div>
+      {/* Suggestions section */}
+      {!isAnalysisReady && (
+        <div style={{ padding: 24, color: '#8c8c8c', textAlign: 'center' }}>
+          {analysisStatus === 1 ? '分析正在进行中...' : analysisStatus === 3 ? '分析失败' : '等待任务完成后开始分析'}
+        </div>
+      )}
+
+      {isAnalysisReady && aiParsed && (
+        <div style={{ marginBottom: 24, padding: 16, background: '#f0f5ff', borderRadius: 8, border: '1px solid #adc6ff' }}>
+          <h4 style={{ margin: '0 0 8px', color: '#1890ff' }}>AI Diagnosis</h4>
+          <p style={{ margin: '0 0 8px' }}><strong>Diagnosis:</strong> {aiParsed.diagnosis}</p>
+          <p style={{ margin: '0 0 8px' }}><strong>Evidence:</strong> {aiParsed.evidence}</p>
+          <p style={{ margin: '0 0 8px' }}><strong>Recommendation:</strong> {aiParsed.recommendation}</p>
+          <p style={{ margin: 0 }}><strong>Confidence:</strong> {aiParsed.confidence != null ? `${(aiParsed.confidence * 100).toFixed(0)}%` : 'N/A'}</p>
+        </div>
+      )}
+
+      {isAnalysisReady && ruleSugs.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h4 style={{ margin: '0 0 12px' }}>Rule-Based Suggestions</h4>
+          {ruleSugs.map((s, i) => (
+            <div key={i} style={{ padding: 12, marginBottom: 8, background: '#fafafa', borderRadius: 4, borderLeft: '3px solid #faad14' }}>
+              <strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.func}</strong>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#595959' }}>{s.suggestion}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isAnalysisReady && ruleSugs.length === 0 && !aiParsed && (
+        <div style={{ padding: 24, color: '#8c8c8c', textAlign: 'center' }}>
+          No suggestions available for this profile. Try using the chat below.
+        </div>
+      )}
+
+      {/* NL Chat */}
+      <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+        <h4 style={{ margin: '0 0 12px' }}>Ask AI</h4>
+        <div style={{
+          height: 200, overflowY: 'auto', border: '1px solid #f0f0f0',
+          borderRadius: 4, padding: 8, marginBottom: 8, fontSize: 13,
+        }}>
+          {chatMessages.length === 0 && (
+            <div style={{ color: '#8c8c8c', textAlign: 'center', padding: 16 }}>
+              Try: &quot;过去一小时CPU飙高帮我看看&quot; or &quot;分析这个任务的性能问题&quot;
+            </div>
+          )}
+          {chatMessages.map((m, i) => (
+            <div key={i} style={{
+              marginBottom: 8, textAlign: m.role === 'user' ? 'right' : 'left',
+            }}>
+              <span style={{
+                display: 'inline-block', maxWidth: '80%', padding: '6px 10px',
+                borderRadius: 8, fontSize: 13,
+                background: m.role === 'user' ? '#1890ff' : '#f0f0f0',
+                color: m.role === 'user' ? '#fff' : '#333',
+              }}>
+                {m.content}
+              </span>
+            </div>
+          ))}
+          <div ref={chatEndRef} />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={chatInput}
+            onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder="Describe what you want to analyze..."
+            style={{
+              flex: 1, padding: '8px 12px', border: '1px solid #d9d9d9',
+              borderRadius: 4, fontSize: 13, outline: 'none',
+            }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={chatLoading}
+            style={{
+              padding: '8px 16px', background: '#1890ff', color: '#fff',
+              border: 'none', borderRadius: 4, cursor: chatLoading ? 'wait' : 'pointer',
+            }}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

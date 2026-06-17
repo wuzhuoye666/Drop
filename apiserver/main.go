@@ -159,7 +159,16 @@ func main() {
 		// Continuous Profiling Segments (read-only for users)
 		api.GET("/tasks/:tid/segments", srv.ListSegments)
 		api.GET("/tasks/:tid/profile-window", srv.GetProfileWindow)
+
+		// Analysis Suggestions
+		api.GET("/tasks/:tid/suggestions", srv.ListSuggestions)
+
+		// NL Chat
+		api.POST("/nl/chat", srv.NLChat)
+		api.POST("/nl/chat/:tid", srv.NLChatFollowup)
+		api.GET("/nl/stream/:tid", srv.NLStreamSSE)
 	}
+
 	addr := cfg.Server.Port
 	logger.Info("apiserver starting", zap.String("addr", addr))
 	if err := r.Run(addr); err != nil {

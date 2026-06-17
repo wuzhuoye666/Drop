@@ -59,4 +59,15 @@ export const deleteSchedule = (tid: string) => api.delete(`/schedule/${tid}`);
 export const listCosFiles = (tid: string) =>
   api.get('/cosfiles', { params: { tid } });
 
+// Analysis Suggestions
+export const listSuggestions = (tid: string) =>
+  api.get(`/tasks/${tid}/suggestions`);
+
+// NL Chat
+export const nlChat = (message: string, tid?: string) =>
+  api.post('/nl/chat', { message, tid });
+
+export const nlChatFollowup = (tid: string, message: string) =>
+  api.post(`/nl/chat/${tid}`, { message });
+
 export default api;

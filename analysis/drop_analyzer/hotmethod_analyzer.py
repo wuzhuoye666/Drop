@@ -19,6 +19,10 @@ import tempfile
 import psycopg2
 from minio import Minio
 
+# Add parent dir to path so analysis_advisor can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from analysis_advisor import load_rules, match_rules, generate_suggestions_md, ask_llm, generate_ai_suggestion_md
+
 
 # ── PG Helpers ──────────────────────────────────────────────────────
 
@@ -50,6 +54,29 @@ def update_analysis_status(dsn: str, tid: str, status: int, reason: str = ""):
         "UPDATE hotmethod_task SET analysis_status = %s, status_info = %s WHERE tid = %s",
         (status, reason, tid),
     )
+    conn.commit()
+    conn.close()
+
+
+def insert_suggestions(dsn: str, tid: str, rule_matches: list, ai_result: dict):
+    """Write rule matches and AI diagnosis to analysis_suggestion table."""
+    conn = psycopg2.connect(dsn)
+    cur = conn.cursor()
+    # Rule-based suggestions
+    for m in rule_matches:
+        cur.execute(
+            "INSERT INTO analysis_suggestion (tid, func, suggestion, status, created_at, updated_at) "
+            "VALUES (%s, %s, %s, 0, now(), now())",
+            (tid, m["func"], m["advice"]),
+        )
+    # AI suggestion (one row, func = '__ai_summary__')
+    if ai_result:
+        ai_text = json.dumps(ai_result, ensure_ascii=False)
+        cur.execute(
+            "INSERT INTO analysis_suggestion (tid, func, suggestion, ai_suggestion, status, created_at, updated_at) "
+            "VALUES (%s, '__ai_summary__', '', %s, 1, now(), now())",
+            (tid, ai_text),
+        )
     conn.commit()
     conn.close()
 
@@ -301,8 +328,47 @@ def main():
                     ct = "application/json"
                 elif art.endswith(".txt"):
                     ct = "text/plain"
+                elif art.endswith(".md"):
+                    ct = "text/markdown"
                 upload_file(mc, bucket, art_key, art_path, ct)
                 print(f"Uploaded {art_key}")
+
+            # ── Generate suggestions ──────────────────────────────
+            topn_path = os.path.join(work_dir, "top.json")
+            if os.path.isfile(topn_path):
+                with open(topn_path) as f:
+                    topn = json.load(f)
+
+                # Rule-based suggestions
+                rules = load_rules(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules.yaml"))
+                rule_matches = match_rules(topn, rules)
+                suggestions_md = generate_suggestions_md(rule_matches)
+                sug_path = os.path.join(work_dir, "suggestions.md")
+                with open(sug_path, "w") as f:
+                    f.write(suggestions_md)
+                upload_file(mc, bucket, f"{args.task_id}/suggestions.md", sug_path, "text/markdown")
+                print(f"Uploaded suggestions.md ({len(rule_matches)} rule matches)")
+
+                # AI-powered analysis
+                task_meta = {
+                    "tid": task.get("tid", ""),
+                    "profiler_type": profiler_type,
+                    "target_ip": task.get("target_ip", ""),
+                }
+                ai_result = ask_llm(topn, task_meta, args.config)
+                ai_md = generate_ai_suggestion_md(ai_result)
+                ai_path = os.path.join(work_dir, "ai_suggestion.md")
+                with open(ai_path, "w") as f:
+                    f.write(ai_md)
+                upload_file(mc, bucket, f"{args.task_id}/ai_suggestion.md", ai_path, "text/markdown")
+                print(f"Uploaded ai_suggestion.md (confidence={ai_result.get('confidence', 0):.0%})")
+
+                # Write to PG analysis_suggestion table
+                try:
+                    insert_suggestions(dsn, args.task_id, rule_matches, ai_result)
+                    print(f"Inserted suggestion rows to PG")
+                except Exception as e:
+                    print(f"WARN: failed to insert suggestions to PG: {e}", file=sys.stderr)
 
         update_analysis_status(dsn, args.task_id, 2, "分析完成")
         print(f"Analysis SUCCESS for {args.task_id}")

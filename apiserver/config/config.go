@@ -11,6 +11,7 @@ type Config struct {
 	PG     PGConfig     `mapstructure:"pg"`
 	S3     S3Config     `mapstructure:"s3"`
 	GRPC   GRPCConfig   `mapstructure:"grpc"`
+	LLM    LLMConfig    `mapstructure:"llm"`
 }
 
 type ServerConfig struct {
@@ -36,6 +37,14 @@ type S3Config struct {
 
 type GRPCConfig struct {
 	Addr string `mapstructure:"addr"`
+}
+
+type LLMConfig struct {
+	APIKey     string  `mapstructure:"api_key"`
+	BaseURL    string  `mapstructure:"base_url"`
+	Model      string  `mapstructure:"model"`
+	MaxTokens  int     `mapstructure:"max_tokens"`
+	Temperature float64 `mapstructure:"temperature"`
 }
 
 func Load(path string) (*Config, error) {
