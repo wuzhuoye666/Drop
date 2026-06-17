@@ -86,8 +86,8 @@ def insert_suggestions(dsn: str, tid: str, rule_matches: list, ai_result: dict):
 def make_minio_client(cfg: configparser.SectionProxy) -> Minio:
     return Minio(
         cfg.get("endpoint", "127.0.0.1:9000"),
-        access_key=cfg.get("access_key", "minioadmin"),
-        secret_key=cfg.get("secret_key", "minioadmin"),
+        access_key=cfg.get("access_key", os.environ.get("DROP_S3_ACCESS_KEY", "")),
+        secret_key=cfg.get("secret_key", os.environ.get("DROP_S3_SECRET_KEY", "")),
         secure=cfg.getboolean("secure", False),
     )
 

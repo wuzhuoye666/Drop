@@ -19,7 +19,7 @@ public:
   void Push(const std::string& target_ip, const drop::hotmethod::TaskDesc& desc) {
     std::lock_guard<std::mutex> lk(mu_);
     queues_[target_ip].push_back(desc);
-    cv_.notify_all();
+    cv_.notify_one();
   }
 
   bool Pop(const std::string& target_ip, drop::hotmethod::TaskDesc* out) {

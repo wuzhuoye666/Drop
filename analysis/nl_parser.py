@@ -8,7 +8,7 @@ from conversational user input.
 import json
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, timezone
 from typing import Optional
 
 
@@ -53,7 +53,7 @@ def extract_time_range(text: str) -> Optional[dict]:
 
     Returns {"start_ts": epoch_seconds, "end_ts": epoch_seconds} or None.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # "过去N小时", "最近N小时", "最近N分钟", "过去一小时"
     m = re.search(r'(?:过去|最近)\s*一?(\d*)\s*(分钟|小时|天)', text)

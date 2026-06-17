@@ -63,7 +63,7 @@ services:
     build:
       context: .
       dockerfile: drop/Dockerfile
-    command: ["/opt/drop/drop_server", "-foreground", "-pg_dsn", "host=postgres port=5432 user=drop password=drop dbname=drop sslmode=disable", "-listen", "0.0.0.0:50051"]
+    command: ["/opt/drop/drop_server", "-foreground", "-pg_dsn", "host=postgres port=5432 user=drop password=drop dbname=drop sslmode=disable", "-port", "50051"]
     network_mode: host
     depends_on:
       postgres:
@@ -75,6 +75,7 @@ services:
       dockerfile: drop/Dockerfile
     privileged: true
     pid: host
+    seccomp_profile: ./etc/seccomp-drop-agent.json
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf
       - /sys/kernel/debug:/sys/kernel/debug:ro

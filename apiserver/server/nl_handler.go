@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -35,6 +34,10 @@ func (s *APIServer) NLChat(c *gin.Context) {
 	var req NLChatReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 4000200, "message": err.Error()})
+		return
+	}
+	if len(req.Message) == 0 || len(req.Message) > 1000 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000202, "message": "message length must be 1-1000"})
 		return
 	}
 
@@ -151,6 +154,10 @@ func (s *APIServer) NLChatFollowup(c *gin.Context) {
 	var req NLChatReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 4000201, "message": err.Error()})
+		return
+	}
+	if len(req.Message) == 0 || len(req.Message) > 1000 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 4000202, "message": "message length must be 1-1000"})
 		return
 	}
 
@@ -442,5 +449,3 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-// Suppress unused import warning
-var _ = io.EOF

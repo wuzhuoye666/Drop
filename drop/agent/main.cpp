@@ -27,6 +27,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -160,39 +161,61 @@ static drop::common::PidStats ComputePidStats() {
 static bool UploadFileToAPI(const std::string& tid,
                              const std::string& filepath,
                              std::string* cos_key) {
-  // Build URL: POST /api/v1/tasks/<tid>/upload/<filename>
   std::string filename = filepath.substr(filepath.rfind('/') + 1);
   std::string url = FLAGS_apiserver_addr + "/api/v1/tasks/" + tid + "/upload/" + filename;
 
-  // Use curl multipart/form-data upload
-  std::string cmd = "curl -sf -o /dev/null -w '%{http_code}' "
-                    "-F 'file=@" + filepath + "' "
-                    "'" + url + "' 2>/dev/null";
-
-  // Instead of system(), use popen (still spawns a shell but avoids system())
-  // For production, we'd use libcurl — this is acceptable for MVP
-  FILE* pipe = popen(cmd.c_str(), "r");
-  if (!pipe) {
-    *cos_key = "popen failed";
+  // Use pipe + fork + exec to avoid shell injection from popen()
+  int pipefd[2];
+  if (pipe(pipefd) != 0) {
+    *cos_key = "pipe failed";
     return false;
   }
 
+  pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    *cos_key = "fork failed";
+    return false;
+  }
+
+  if (pid == 0) {
+    // Child process
+    close(pipefd[0]);
+    dup2(pipefd[1], STDOUT_FILENO);
+    close(pipefd[1]);
+    // Redirect stderr to /dev/null
+    int devnull = open("/dev/null", O_WRONLY);
+    if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
+
+    std::string form_arg = "file=@" + filepath;
+    execlp("curl", "curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}",
+           "-F", form_arg.c_str(), url.c_str(), static_cast<char*>(nullptr));
+    _exit(127);  // exec failed
+  }
+
+  // Parent process
+  close(pipefd[1]);
   char buf[64];
   std::string result;
-  while (fgets(buf, sizeof(buf), pipe)) {
-    result += buf;
+  while (true) {
+    ssize_t n = read(pipefd[0], buf, sizeof(buf));
+    if (n <= 0) break;
+    result.append(buf, n);
   }
-  int rc = pclose(pipe);
+  close(pipefd[0]);
 
-  // Trim newline
+  int status = 0;
+  waitpid(pid, &status, 0);
+
   while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
     result.pop_back();
 
   int http_code = 0;
   try { http_code = std::stoi(result); } catch (...) {}
 
-  if (rc != 0 || http_code != 200) {
-    *cos_key = "upload HTTP " + result + " (rc=" + std::to_string(rc) + ")";
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0 || http_code != 200) {
+    *cos_key = "upload HTTP " + result;
     return false;
   }
 

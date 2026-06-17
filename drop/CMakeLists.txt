@@ -7,6 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ── Protobuf + gRPC ──────────────────────────────────────────────
 find_package(Protobuf REQUIRED)
 find_package(gRPC REQUIRED)
+
+# Enforce protobuf/gRPC version consistency to prevent runtime ABI breaks
+if(Protobuf_VERSION AND NOT Protobuf_VERSION MATCHES "^(3\\.2[0-9]\\.|32\\.)")
+  message(WARNING "Protobuf version ${Protobuf_VERSION} may be incompatible. "
+    "Expected 3.2x.x / 32.x.x. Incompatible versions cause runtime crashes.")
+endif()
+
 find_package(glog REQUIRED)
 
 # Use pkg-config for libpq and libbpf

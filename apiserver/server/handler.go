@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	crypto_rand "crypto/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -692,8 +692,10 @@ func (s *APIServer) GetProfileWindow(c *gin.Context) {
 func genTID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 12)
+	randBytes := make([]byte, 12)
+	_, _ = crypto_rand.Read(randBytes)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[int(randBytes[i])%len(charset)]
 	}
 	return string(b)
 }

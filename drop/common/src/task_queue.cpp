@@ -65,17 +65,6 @@ void PGStore::UpsertAgent(const std::string& ip, const std::string& hostname,
 
   // If agent was offline and now came back online, write audit log
   if (was_offline && !agent_id.empty()) {
-    // Get the agent_id if we didn't have it (new insert case)
-    if (agent_id.empty()) {
-      const char* id_sql = "SELECT id FROM agent_info WHERE ip_addr = $1";
-      const char* id_params[1] = {ip.c_str()};
-      PGresult* id_res = PQexecParams(c, id_sql, 1, nullptr, id_params, nullptr, nullptr, 0);
-      if (PQresultStatus(id_res) == PGRES_TUPLES_OK && PQntuples(id_res) > 0) {
-        agent_id = PQgetvalue(id_res, 0, 0);
-      }
-      PQclear(id_res);
-    }
-
     const char* audit_sql =
         "INSERT INTO agent_audit_log (agent_id, event_type, reason, timestamp) "
         "VALUES ($1, 'online', 'heartbeat recovered', NOW())";
@@ -171,12 +160,12 @@ int PGStore::ScanAgentHeartbeats(int timeout_sec) {
   auto* c = static_cast<PGconn*>(conn_);
 
   // Find agents marked online but stale
-  std::string sql =
+  const char* sql =
       "SELECT id, ip_addr FROM agent_info "
-      "WHERE online = true AND last_hb < NOW() - INTERVAL '"
-      + std::to_string(timeout_sec) + " seconds'";
-
-  PGresult* res = PQexec(c, sql.c_str());
+      "WHERE online = true AND last_hb < NOW() - ($1 || ' seconds')::interval";
+  std::string timeout_str = std::to_string(timeout_sec);
+  const char* params[1] = {timeout_str.c_str()};
+  PGresult* res = PQexecParams(c, sql, 1, nullptr, params, nullptr, nullptr, 0);
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
     LOG(ERROR) << "ScanAgentHeartbeats query failed: " << PQerrorMessage(c);
     PQclear(res);
@@ -209,11 +198,10 @@ int PGStore::ScanAgentHeartbeats(int timeout_sec) {
 
   // Also detect agents that came back online
   {
-    std::string sql2 =
+    const char* sql2 =
         "SELECT id, ip_addr FROM agent_info "
-        "WHERE online = false AND last_hb >= NOW() - INTERVAL '"
-        + std::to_string(timeout_sec) + " seconds'";
-    PGresult* res2 = PQexec(c, sql2.c_str());
+        "WHERE online = false AND last_hb >= NOW() - ($1 || ' seconds')::interval";
+    PGresult* res2 = PQexecParams(c, sql2, 1, nullptr, params, nullptr, nullptr, 0);
     if (PQresultStatus(res2) == PGRES_TUPLES_OK) {
       int n2 = PQntuples(res2);
       for (int i = 0; i < n2; ++i) {

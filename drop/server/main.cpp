@@ -36,12 +36,30 @@ static drop::TaskQueue       g_task_queue;
 static drop::HeartbeatTracker g_hb_tracker;
 static std::unique_ptr<drop::PGStore> g_pg;
 
+// Helper: reject if client already cancelled or deadline passed
+static Status CheckDeadline(ServerContext* ctx) {
+  if (ctx->IsCancelled()) {
+    return Status(StatusCode::CANCELLED, "request cancelled by client");
+  }
+  auto deadline = ctx->deadline();
+  auto now = std::chrono::system_clock::now();
+  if (deadline.time_since_epoch().count() > 0 &&
+      deadline < now) {
+    return Status(StatusCode::DEADLINE_EXCEEDED, "request deadline exceeded");
+  }
+  return Status::OK;
+}
+
 // ── HealthCheckService ──────────────────────────────────────────────
 class HealthCheckServiceImpl final
     : public drop::healthcheck::HealthCheck::Service {
-  Status Do(ServerContext* /*ctx*/,
+  Status Do(ServerContext* ctx,
             const drop::healthcheck::HealthCheckRequest* req,
             drop::healthcheck::HealthCheckResponse* resp) override {
+    // Check deadline before doing PG work
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
+
     const std::string& ip = req->ip_addr();
 
     // Track heartbeat
@@ -74,16 +92,20 @@ class HealthCheckServiceImpl final
 // ── HotmethodService ────────────────────────────────────────────────
 class HotmethodServiceImpl final
     : public drop::hotmethod::Hotmethod::Service {
-  Status Collect(ServerContext* /*ctx*/,
+  Status Collect(ServerContext* ctx,
                  const drop::hotmethod::Target* /*req*/,
                  google::protobuf::Empty* /*resp*/) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     // Deprecated — tasks are dispatched via HealthCheck heartbeat now
     return Status(StatusCode::UNIMPLEMENTED, "use HealthCheck.Do for task dispatch");
   }
 
-  Status NotifyResult(ServerContext* /*ctx*/,
+  Status NotifyResult(ServerContext* ctx,
                       const drop::hotmethod::TaskResult* req,
                       google::protobuf::Empty* /*resp*/) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     const std::string& tid = req->task_id();
     if (req->error_message().empty()) {
       // Success: transition RUNNING → UPLOADING → DONE
@@ -120,9 +142,11 @@ class HotmethodServiceImpl final
 // ── ControlService ──────────────────────────────────────────────────
 class ControlServiceImpl final
     : public drop::control::Control::Service {
-  Status CreateTask(ServerContext* /*ctx*/,
+  Status CreateTask(ServerContext* ctx,
                     const drop::control::CreateTaskRequest* req,
                     drop::control::CreateTaskResponse* resp) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     const std::string& target_ip = req->target_ip();
     const drop::hotmethod::TaskDesc& desc = req->task_desc();
 
@@ -137,9 +161,11 @@ class ControlServiceImpl final
     return Status::OK;
   }
 
-  Status FetchData(ServerContext* /*ctx*/,
+  Status FetchData(ServerContext* ctx,
                    const drop::control::FetchDataRequest* req,
                    drop::control::FetchDataResponse* resp) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     // For now return cos_key from PG if available
     if (g_pg && g_pg->Connected()) {
       // Simple query – in production we'd parameterize properly
@@ -153,9 +179,11 @@ class ControlServiceImpl final
     return Status::OK;
   }
 
-  Status StatAgent(ServerContext* /*ctx*/,
+  Status StatAgent(ServerContext* ctx,
                    const drop::control::StatAgentRequest* req,
                    drop::control::StatAgentResponse* resp) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     std::string filter_ip = req->target_ip();
 
     if (g_pg && g_pg->Connected()) {
@@ -186,9 +214,11 @@ class ControlServiceImpl final
 // ── InitService ─────────────────────────────────────────────────────
 class InitServiceImpl final
     : public drop::init::Init::Service {
-  Status RegisterAgent(ServerContext* /*ctx*/,
+  Status RegisterAgent(ServerContext* ctx,
                        const drop::init::RegisterAgentRequest* req,
                        drop::init::RegisterAgentResponse* resp) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     // Upsert into PG
     if (g_pg && g_pg->Connected()) {
       g_pg->UpsertAgent(req->ip_addr(), req->host_name(), req->uid(), req->agent_version());
@@ -200,9 +230,11 @@ class InitServiceImpl final
     return Status::OK;
   }
 
-  Status FetchConfig(ServerContext* /*ctx*/,
+  Status FetchConfig(ServerContext* ctx,
                      const drop::init::FetchConfigRequest* /*req*/,
                      drop::init::FetchConfigResponse* resp) override {
+    auto st = CheckDeadline(ctx);
+    if (!st.ok()) return st;
     // Return default COS config (to be filled from environment later)
     auto* cfg = resp->mutable_cos_config();
     cfg->set_region("default");

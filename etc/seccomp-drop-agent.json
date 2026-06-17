@@ -1,0 +1,19 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": ["SCMP_ARCH_X86_64"],
+  "syscalls": [
+    {
+      "names": [
+        "keyctl", "add_key", "request_key",
+        "mount", "umount2", "pivot_root", "chroot",
+        "acct", "settimeofday", "clock_settime",
+        "vhangup", "swapoff", "swapon", "reboot",
+        "sethostname", "setdomainname",
+        "iopl", "ioperm",
+        "create_module", "init_module", "delete_module",
+        "lookup_dcookie"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}
