@@ -71,6 +71,9 @@ add_library(drop_common
   common/src/ebpf_loader.cpp
   common/src/ebpf_profiler.cpp
   common/src/continuous_profiler.cpp
+  common/src/script_runner.cpp
+  common/src/cos_client.cpp
+  common/src/container_info.cpp
 )
 target_include_directories(drop_common PUBLIC
   ${GEN_DIR}

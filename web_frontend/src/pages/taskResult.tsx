@@ -3,6 +3,7 @@ import * as echarts from 'echarts';
 import { useSearchParams, Link } from 'react-router-dom';
 import { getTask, listCosFiles, listSegments, getProfileWindow, listSuggestions, nlChat, nlChatFollowup } from '../api';
 import { taskStatusLabel, taskStatusColor, analysisStatusLabel, analysisStatusColor, profilerTypeName } from '../utils';
+import FlameGraph from '../components/flamegraph/FlameGraph';
 
 interface Task {
   tid: string;
@@ -53,6 +54,8 @@ export default function TaskResultPage() {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [windowCollapsed, setWindowCollapsed] = useState<string | null>(null);
   const [windowLoading, setWindowLoading] = useState(false);
+  const [treeCollapsed, setTreeCollapsed] = useState<string | null>(null);
+  const [useD3Flame, setUseD3Flame] = useState(true);
 
   const isContinuous = task?.type === 1;
 
@@ -91,6 +94,27 @@ export default function TaskResultPage() {
       setTab('timeline');
     }
   }, [isContinuous, segments.length, tab]);
+
+  // Fetch tree/collapsed data for D3 flame graph
+  useEffect(() => {
+    if (!useD3Flame) return;
+    const cf = files.find(f => f.name === 'flamegraph_tree.json.gz' || f.name === 'flamegraph_tree.json');
+    if (cf) {
+      fetch(cf.url)
+        .then(r => r.text())
+        .then(text => setTreeCollapsed(text))
+        .catch(() => setUseD3Flame(false));
+      return;
+    }
+    // Fallback to collapsed stacks
+    const col = files.find(f => f.name === 'collapsed.txt');
+    if (col && !treeCollapsed) {
+      fetch(col.url)
+        .then(r => r.text())
+        .then(text => setTreeCollapsed(text))
+        .catch(() => {});
+    }
+  }, [files, useD3Flame, treeCollapsed]);
 
   if (!task) return <div style={{ padding: 24 }}>Loading...</div>;
 
@@ -155,12 +179,36 @@ export default function TaskResultPage() {
       {/* Tab Content */}
       {tab === 'flamegraph' && (
         <div>
-          {svgFile ? (
-            <iframe
-              src={svgFile.url}
-              title="Flame Graph"
-              style={{ width: '100%', height: 600, border: '1px solid #f0f0f0', borderRadius: 4 }}
-            />
+          {(useD3Flame && treeCollapsed) ? (
+            <div>
+              <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setUseD3Flame(false)}
+                  style={{ fontSize: 12, color: '#8c8c8c', cursor: 'pointer', background: 'none', border: '1px solid #d9d9d9', borderRadius: 4, padding: '2px 8px' }}
+                >
+                  Switch to SVG view
+                </button>
+              </div>
+              <FlameGraph data={treeCollapsed} width={1100} height={560} title={`${flameTabLabel} (Interactive)`} />
+            </div>
+          ) : svgFile ? (
+            <div>
+              {!useD3Flame && files.find(f => f.name === 'collapsed.txt') && (
+                <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => { setUseD3Flame(true); }}
+                    style={{ fontSize: 12, color: '#8c8c8c', cursor: 'pointer', background: 'none', border: '1px solid #d9d9d9', borderRadius: 4, padding: '2px 8px' }}
+                  >
+                    Switch to interactive view
+                  </button>
+                </div>
+              )}
+              <iframe
+                src={svgFile.url}
+                title="Flame Graph"
+                style={{ width: '100%', height: 600, border: '1px solid #f0f0f0', borderRadius: 4 }}
+              />
+            </div>
           ) : (
             <p style={{ color: '#8c8c8c' }}>Flame graph not yet available (analysis pending or in progress)</p>
           )}

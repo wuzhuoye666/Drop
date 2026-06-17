@@ -24,7 +24,7 @@ message Target {
 message TaskDesc {
   string  task_id        = 1;
   uint32  task_type      = 2;   // 0=generic / 1=Java / 2=Tracing / 4=MemCheck / 6=JavaHeap
-  uint32  profiler_type  = 3;   // 0=perf / 1=async-profiler / 2=pprof
+  uint32  profiler_type  = 3;   // 0=perf / 1=async-profiler / 2=pprof / 3=ebpf / 5=script
   drop.common.RecordArgv sample_argv = 4;
   string  container_name = 5;
   uint32  container_type = 6;

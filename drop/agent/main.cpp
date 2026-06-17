@@ -11,6 +11,7 @@
 #include "profiler.h"
 #include "profiler_factory.h"
 #include "continuous_profiler.h"
+#include "server_pool.h"
 
 #include <iostream>
 #include <fstream>
@@ -36,7 +37,7 @@
 // ── gflags ──────────────────────────────────────────────────────────
 DEFINE_string(config, "", "Path to agent config JSON");
 DEFINE_bool(foreground, false, "Run in foreground (do not daemonize)");
-DEFINE_string(server_addr, "127.0.0.1:50051", "drop_server gRPC address");
+DEFINE_string(server_addr, "127.0.0.1:50051", "drop_server gRPC address (comma-separated for failover)");
 DEFINE_string(hostname, "", "Agent hostname (auto-detected if empty)");
 DEFINE_string(ip, "", "Agent IP address (auto-detected if empty)");
 DEFINE_string(uid, "", "Agent unique ID (auto-generated if empty)");
@@ -52,6 +53,9 @@ struct WorkerState {
 };
 
 static WorkerState g_worker;
+
+// ── Multi-server failover state ─────────────────────────────────────
+static drop::ServerPool g_server_pool;
 
 // ── PidStats: self-monitoring ───────────────────────────────────────
 static long g_clk_tck = 0;
@@ -287,13 +291,17 @@ static void SignalHandler(int sig) {
 }
 
 // ── Heartbeat thread ────────────────────────────────────────────────
-static void HeartbeatThread(std::shared_ptr<grpc::Channel> channel) {
-  auto stub = drop::healthcheck::HealthCheck::NewStub(channel);
-  auto init_stub = drop::init::Init::NewStub(channel);
+static void HeartbeatThread() {
   bool registered = false;
+  int consecutive_failures = 0;
+  static const int kFailoverThreshold = 3;  // failover after 3 consecutive failures
 
   while (true) {
     if (g_worker.shutdown) break;
+
+    auto channel = g_server_pool.GetChannel();
+    auto stub = drop::healthcheck::HealthCheck::NewStub(channel);
+    auto init_stub = drop::init::Init::NewStub(channel);
 
     grpc::ClientContext ctx;
     ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
@@ -302,17 +310,28 @@ static void HeartbeatThread(std::shared_ptr<grpc::Channel> channel) {
     req.set_host_name(FLAGS_hostname);
     req.set_ip_addr(FLAGS_ip);
     req.set_uid(FLAGS_uid);
-  req.set_agent_version(FLAGS_agent_version);
-  *req.mutable_self_pstats() = ComputePidStats();
+    req.set_agent_version(FLAGS_agent_version);
+    *req.mutable_self_pstats() = ComputePidStats();
 
     drop::healthcheck::HealthCheckResponse resp;
     auto status = stub->Do(&ctx, req, &resp);
 
     if (!status.ok()) {
-      LOG(WARNING) << "Heartbeat failed: " << status.error_message();
+      consecutive_failures++;
+      LOG(WARNING) << "Heartbeat failed (" << consecutive_failures
+                   << "/" << kFailoverThreshold << "): "
+                   << status.error_message()
+                   << " [server=" << g_server_pool.CurrentAddr() << "]";
+      if (consecutive_failures >= kFailoverThreshold && g_server_pool.addrs.size() > 1) {
+        g_server_pool.Failover();
+        consecutive_failures = 0;
+        registered = false;  // re-register with new server
+      }
       std::this_thread::sleep_for(std::chrono::seconds(1));
       continue;
     }
+
+    consecutive_failures = 0;
 
     LOG_EVERY_N(INFO, 5) << "Heartbeat OK, pending=" << resp.pending();
 
@@ -368,9 +387,7 @@ static std::map<std::string, drop::ContinuousProfiler*> g_continuous_profilers;
 static std::mutex g_continuous_mu;
 
 // ── Worker thread (real profiler execution) ────────────────────────
-static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
-  auto hm_stub = drop::hotmethod::Hotmethod::NewStub(channel);
-
+static void WorkerThread() {
   while (true) {
     drop::hotmethod::TaskDesc task;
     {
@@ -401,13 +418,14 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
       }
 
       // Run in a dedicated thread so worker can handle stop requests
-      std::thread runner([cp, task, output_dir, tid, &hm_stub]() {
+      std::thread runner([cp, task, output_dir, tid]() {
         std::string error_msg;
         bool ok = cp->record(task, output_dir, &error_msg);
         LOG(INFO) << "Continuous task " << tid
                   << (ok ? " finished cleanly" : " failed: " + error_msg);
 
         // Report final result to server
+        auto hm_stub = drop::hotmethod::Hotmethod::NewStub(g_server_pool.GetChannel());
         grpc::ClientContext ctx;
         ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
         drop::hotmethod::TaskResult result;
@@ -428,6 +446,7 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
       // ── Single-shot profiling path (existing logic) ────────────
       auto profiler = drop::CreateProfiler(task.profiler_type());
       if (!profiler) {
+        auto hm_stub = drop::hotmethod::Hotmethod::NewStub(g_server_pool.GetChannel());
         grpc::ClientContext ctx;
         ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
         drop::hotmethod::TaskResult result;
@@ -475,6 +494,7 @@ static void WorkerThread(std::shared_ptr<grpc::Channel> channel) {
       }
 
       google::protobuf::Empty empty;
+      auto hm_stub = drop::hotmethod::Hotmethod::NewStub(g_server_pool.GetChannel());
       auto status = hm_stub->NotifyResult(&ctx, result, &empty);
       if (!status.ok()) {
         LOG(ERROR) << "NotifyResult failed for " << tid << ": " << status.error_message();
@@ -550,16 +570,15 @@ int main(int argc, char** argv) {
   signal(SIGTERM, SignalHandler);
   signal(SIGINT, SignalHandler);
 
-  // Create gRPC channel
-  auto channel = grpc::CreateChannel(
-      FLAGS_server_addr, grpc::InsecureChannelCredentials());
+  // Initialize server pool (supports comma-separated addresses for failover)
+  g_server_pool.Init(FLAGS_server_addr);
 
   // Start heartbeat thread (1Hz, never blocks)
-  std::thread hb_thread(HeartbeatThread, channel);
+  std::thread hb_thread(HeartbeatThread);
   hb_thread.detach();
 
   // Start worker thread
-  std::thread wk_thread(WorkerThread, channel);
+  std::thread wk_thread(WorkerThread);
 
   // Main thread: wait for worker to finish
   wk_thread.join();

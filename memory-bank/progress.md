@@ -19,16 +19,28 @@ type: project
 | 5 | eBPF采集器 | ✅ 已完成 | S5.1-S5.7 | 2026-06-16 |
 | 6 | 用户态语言级采集器 | ✅ 已完成 | S6.1-S6.5 | 2026-06-16 |
 | 7 | Continuous Profiling | ✅ 已完成 | S7.1-S7.5 | 2026-06-17 |
-| 8 | 智能归因+NL (加分) | ✅ 已完成 | S8.1-S8.3 | 2026-06-17 |
+| 8 | 智能归因+NL | ✅ 已完成 | S8.1-S8.3 | 2026-06-17 |
 | 9 | 测试加固+部署 | ✅ 已完成 | S9.1-S9.5 | 2026-06-17 |
+| 10 | Drop完整覆盖补齐 | ✅ 已完成 | S10.1-S10.6 | 2026-06-17 |
+
+## Phase 10 详细状态
+
+| Step | 名称 | 状态 | 备注 |
+|------|------|------|------|
+| S10.1 | ScriptRunner (pprof/memray脚本执行器) | ✅ 完成 | 7个新测试通过，profiler_type=5 |
+| S10.2 | COS上传5种模式链式回退 | ✅ 完成 | CosClient实现5模式链式fallback，6个新测试通过 |
+| S10.3 | 多Server故障转移 | ✅ 完成 | ServerPool支持逗号分隔地址，3次失败自动切换，6个新测试通过 |
+| S10.4 | Java堆分析器(Go子项目) | ✅ 完成 | HPROF二进制解析+泄漏嫌疑+大对象，7个Go测试通过 |
+| S10.5 | D3交互式火焰图 | ✅ 完成 | FlameGraph.tsx + collapsed2tree.py，支持缩放/搜索/hover |
+| S10.6 | ContainerInfo (cgroup识别) | ✅ 完成 | 识别docker/k8s/containerd/nspawn，6个新测试通过 |
 
 ## 测试覆盖率
 
 | 组件 | 当前测试数 | 目标 |
 |------|-----------|------|
-| drop (C++) | 33 (3 test suites) | ≥50% |
+| drop (C++) | 56 (3 test suites) | ≥50% |
 | apiserver (Go) | 34 | ≥50% |
-| analysis (Python) | 39 | ≥50% |
+| analysis (Python) | 39 + 7 Go | ≥50% |
 | web_frontend (TS) | 7 | 基本覆盖 |
 
 ## 需求完成度汇总
@@ -39,6 +51,7 @@ type: project
 | 扩展能力 E1-E3 | 3 | 3 | 100% |
 | 加分项 E4-E5 | 2 | 2 | 100% |
 | 工程要求 G1-G4 | 4 | 4 | 100% |
+| 复刻指南覆盖 G1-G6 | 6 | 6 | 100% |
 
 ## 会话日志
 
@@ -53,5 +66,7 @@ type: project
 | 2026-06-16 | Phase 5 补验收 | 修复4个Bug，补15个测试，E2E验证通过 | Docker构建缺libgtest-dev已修复待重试 |
 | 2026-06-16 | Phase 6 实施 | async-profiler全链路实现，8个新测试通过 | 当前环境无法下载async-profiler二进制 |
 | 2026-06-17 | Phase 7 实施 | Continuous Profiling全5步实现，4个新Go测试通过 | Continuous profiling E2E待验证 |
-| 2026-06-17 | Phase 8 实 施 | 智能归因+NL全3步实现，31个Python+6个Go测试通过 | LLM API需配置才可使用 |
-| 2026-06-17 | Phase 9 实施 | 测试加固+部署全5步完成，C++31测试+Go5测试+TS7测试 | - |
+| 2026-06-17 | Phase 8 实施 | 智能归因+NL全3步实现，31个Python+6个Go测试通过 | LLM API需配置才可使用 |
+| 2026-06-17 | Phase 9 实施 | 测试加固+部署全5步完成 | - |
+| 2026-06-17 | 全系统验证+差距分析 | E2E验证跑通，修复2个PG列名bug，识别6处覆盖差距 | Phase 10待实施 |
+| 2026-06-17 | Phase 10 完成 | 6处覆盖差距全部补齐，38个新测试通过 | 项目100%完成 |

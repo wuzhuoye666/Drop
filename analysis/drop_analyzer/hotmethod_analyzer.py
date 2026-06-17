@@ -65,7 +65,7 @@ def insert_suggestions(dsn: str, tid: str, rule_matches: list, ai_result: dict):
     # Rule-based suggestions
     for m in rule_matches:
         cur.execute(
-            "INSERT INTO analysis_suggestion (tid, func, suggestion, status, created_at, updated_at) "
+            "INSERT INTO analysis_suggestion (t_id, func, suggestion, status, created_at, updated_at) "
             "VALUES (%s, %s, %s, 0, now(), now())",
             (tid, m["func"], m["advice"]),
         )
@@ -73,7 +73,7 @@ def insert_suggestions(dsn: str, tid: str, rule_matches: list, ai_result: dict):
     if ai_result:
         ai_text = json.dumps(ai_result, ensure_ascii=False)
         cur.execute(
-            "INSERT INTO analysis_suggestion (tid, func, suggestion, ai_suggestion, status, created_at, updated_at) "
+            "INSERT INTO analysis_suggestion (t_id, func, suggestion, ai_suggestion, status, created_at, updated_at) "
             "VALUES (%s, '__ai_summary__', '', %s, 1, now(), now())",
             (tid, ai_text),
         )

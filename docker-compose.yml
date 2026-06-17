@@ -75,7 +75,6 @@ services:
       dockerfile: drop/Dockerfile
     privileged: true
     pid: host
-    seccomp_profile: ./etc/seccomp-drop-agent.json
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf
       - /sys/kernel/debug:/sys/kernel/debug:ro

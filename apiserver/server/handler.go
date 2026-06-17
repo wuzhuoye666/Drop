@@ -525,7 +525,7 @@ func (s *APIServer) ToggleSchedule(c *gin.Context) {
 		return
 	}
 
-	result := s.db.Model(&model.MultiTasks{}).Where("tid = ? AND trigger_type = ?", tid, model.TriggerCron).Update("enabled", req.Enabled)
+	result := s.db.Model(&model.MultiTasks{}).Where("t_id = ? AND trigger_type = ?", tid, model.TriggerCron).Update("enabled", req.Enabled)
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"code": 4040013, "message": "schedule not found"})
 		return
@@ -550,7 +550,7 @@ func (s *APIServer) ToggleSchedule(c *gin.Context) {
 func (s *APIServer) DeleteSchedule(c *gin.Context) {
 	tid := c.Param("tid")
 
-	result := s.db.Where("tid = ? AND trigger_type = ?", tid, model.TriggerCron).Delete(&model.MultiTasks{})
+	result := s.db.Where("t_id = ? AND trigger_type = ?", tid, model.TriggerCron).Delete(&model.MultiTasks{})
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"code": 4040014, "message": "schedule not found"})
 		return

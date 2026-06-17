@@ -699,6 +699,106 @@ type: project
 
 ---
 
+## Phase 10：Drop完整覆盖补齐 `[ ]`
+
+**目标**：补齐与Drop复刻指南的6处差距，使系统100%覆盖原版Drop所有功能
+
+### Step 10.1 `[ ]` ScriptRunner — pprof/memray脚本执行器
+- 实现 `ScriptRunner` 类，继承 `IProfiler`
+- 用于 `profiler_type=5 (ScriptExec)` 的任务，执行 `scriptContent` 字段中的脚本
+- `record()`: 将 `taskDesc.scriptContent()` 写入临时文件 → `fork+execvp("/bin/sh", {"sh", script_path})`
+- 必须对子进程做 `setpgid` + 超时杀进程防护
+- `collect_result()`: 返回脚本 stdout 产物路径
+- 注册到 ProfilerFactory: `profiler_type=5 → ScriptRunner`
+
+**验收**：
+1. 创建 `profiler_type=5` + `scriptContent="echo hello"` 的任务 → Agent日志显示 "ScriptRunner started"
+2. 产出文件包含脚本输出
+3. 故意写死循环脚本 → 超时后 SIGTERM + SIGKILL，任务状态=FAILED
+4. 无僵尸进程
+
+### Step 10.2 `[ ]` COS上传5种模式链式回退
+- 重写 `COSClient` 类，支持5种连接模式：
+  1. 内网+FLAG（默认，走内网endpoint + 临时密钥）
+  2. 公网（走公网endpoint + 临时密钥）
+  3. 仅FLAG内网（仅FLAG地址段内网）
+  4. 仅配置内网（仅config里的内网endpoint）
+  5. HTTP代理（通过HTTP_PROXY环境变量）
+- 链式回退逻辑：上传失败 → 切换下一种模式重试 → 5种都失败才报错
+- 模式配置来源：`CosConfig` proto 中的 region/bucket 及环境变量
+
+**验收**：
+1. 正常模式下上传成功（模式1）
+2. 故意设置错误endpoint → 自动回退到模式2或模式3 → 仍能上传
+3. 所有模式都失败 → errorMessage 非空
+4. 日志打印当前使用的上传模式
+
+### Step 10.3 `[ ]` 多Server故障转移
+- `config.json` 支持 `server_ips` 数组（允许多个）
+- Agent启动时遍历 `server_ips`，对每个IP调用 `RegisterAgent`
+- 第一个成功的即为主Server，后续心跳都连这个
+- 心跳连续失败3次 → 重新遍历列表寻找可用Server
+- 新增 `--server_addr` flag 兼容单地址模式
+
+**验收**：
+1. config.json 写 `["ip1:50051", "ip2:50051"]`，ip1不可达 → Agent自动连ip2
+2. Agent日志 "Registered with server ip2:50051"
+3. 所有的都不可达 → Agent日志打印 "All servers unreachable, retrying in 10s..."
+4. ip2后来挂掉 → Agent切换回恢复的ip1
+
+### Step 10.4 `[ ]` Java堆分析器（Go子项目）
+- 在 `analysis/java_heap_analyzer/` 下新建Go项目
+- 实现 HPROF 二进制解析器：
+  - 读 HPROF header → string table → class dump → instance dump → object array → primitive array
+  - 计算-retained size（对象图 + GC root → dominator tree）
+- 输出产物：
+  - `heap_summary.json`：总堆大小、对象数、类数
+  - `dominator_tree.json`：Top20大对象及其支配子树
+  - `largest_objects.json`：Top50单对象按 shallow size 排序
+- CLI入口：`java_heap_analyzer --input <hprof_path> --output-dir <dir>`
+- 与 analysis 的 Python 主入口集成：task_type=6 时调起此Go二进制
+
+**验收**：
+1. 给一个真实 HPROF 文件（或小型测试文件）→ 退出码0
+2. `largest_objects.json` 非空，每个对象含 class/name/shallow_size
+3. total heap size > 0
+4. Go test 覆盖核心解析逻辑
+
+### Step 10.5 `[ ]` D3交互式火焰图组件
+- 安装 `d3-flame-graph` npm 包
+- 新建 `web_frontend/src/components/flamegraph/FlameGraph.tsx`
+- 实现：
+  - `d3-flame-graph` 渲染 JSON 树数据（需analysis端增加 collapsed→JSON 树转换）
+  - 点击栈帧 → zoom in（面包屑导航回退）
+  - 搜索框 → 高亮匹配栈帧（其余半透明）
+  - hover → tooltip 显示函数全名、self/total 采样数、百分比
+- analysis端新增：`collapsed2tree.py`，将折叠栈转为 `{name, value, children}` 树JSON（pako gz压缩上传MinIO）
+- 任务详情页火焰图Tab：根据 `analysis_status` 切换 SVG iframe / D3交互式
+
+**验收**：
+1. 详情页火焰图Tab → 显示D3交互式火焰图（非SVG iframe）
+2. 点击某栈帧 → 视图放大到该子树，面包屑出现
+3. 搜索 "main" → 匹配栈帧高亮黄色，其余变暗
+4. hover某栈帧 → 显示 tooltip 含函数名和百分比
+5. 大数据（>50万帧）不卡死（depth截断在analysis端已完成）
+
+### Step 10.6 `[ ]` ContainerInfo — cgroup/namespace容器识别
+- 实现 `ContainerInfo` 类
+- 核心逻辑：
+  - 读 `/proc/[pid]/cgroup` → 解析 `memory:.../docker-<container_id>.scope` 或 `/kubepods/...`
+  - 读 `/proc/[pid]/ns/pid` → namespace inode
+  - 容器名称映射：Docker → `docker inspect`；K8s → 通过 `/proc/[pid]/cgroup` 反推 Pod UID
+- Agent心跳时附带上 `container_name` 和 `container_type`（0=host, 1=docker, 2=k8s）
+- 任务下发时，Agent在执行采集前先识别目标PID的容器环境，选择正确的 perf/event 命名空间
+
+**验收**：
+1. 在非容器环境运行 → `container_type=0(host)`
+2. 在Docker容器内运行 → `container_type=1(docker)`
+3. agent_info 表有 container_name 字段
+4. 任务日志包含 "Detected container: xxx"
+
+---
+
 ## 依赖关系图
 
 ```
@@ -709,9 +809,11 @@ Phase 1 ──→ Phase 2 ──→ Phase 4 ──→ Phase 6
                                    Phase 8 (可选)
                                         │
                                    Phase 9
+                                        │
+                                   Phase 10 (Drop全覆盖)
 ```
 
-**关键路径**：Phase 1 → 2 → 3 → 4 → 5 → 9（最短可交付路径）
+**关键路径**：Phase 1 → 2 → 3 → 4 → 5 → 9 → 10
 
 ## 需求映射速查
 
@@ -726,3 +828,4 @@ Phase 1 ──→ Phase 2 ──→ Phase 4 ──→ Phase 6
 | 7 | E1(Continuous Profiling) |
 | 8 | E4(智能归因), E5(自然语言) |
 | 9 | B6(单测≥50%+≥3个e2e), G1(make demo), G2(提交规范), G4(设计文档) |
+| 10 | DG1(ScriptRunner), DG2(COS链式回退), DG3(多Server故障转移), DG4(Java堆分析), DG5(D3交互火焰图), DG6(ContainerInfo) |

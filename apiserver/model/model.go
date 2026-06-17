@@ -67,8 +67,8 @@ func (HotmethodTask) TableName() string { return "hotmethod_task" }
 
 // MultiTasks 多目标任务
 type MultiTasks struct {
-	TID            string `gorm:"column:tid;primaryKey;size:64" json:"tid"`
-	SubTIDs        string `gorm:"type:jsonb;default:'[]'" json:"sub_tids"` // JSON array of sub task TIDs
+	TID            string `gorm:"column:t_id;primaryKey;size:64" json:"tid"`
+	SubTIDs        string `gorm:"column:sub_t_ids;type:jsonb;default:'[]'" json:"sub_tids"` // JSON array of sub task TIDs
 	Type           int    `gorm:"not null;default:0" json:"type"`
 	Status         int    `gorm:"not null;default:0" json:"status"`
 	AnalysisStatus int    `gorm:"not null;default:0" json:"analysis_status"`
@@ -100,7 +100,7 @@ func (GroupMember) TableName() string { return "group_members" }
 // AnalysisSuggestion 分析建议
 type AnalysisSuggestion struct {
 	BaseModel
-	TID          string `gorm:"size:64;not null;index" json:"tid"`
+	TID          string `gorm:"column:t_id;size:64;not null;index" json:"tid"`
 	Func         string `gorm:"size:512;not null" json:"func"`
 	Suggestion   string `gorm:"type:text;not null" json:"suggestion"`
 	AISuggestion string `gorm:"type:text" json:"ai_suggestion,omitempty"`

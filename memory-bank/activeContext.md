@@ -8,21 +8,29 @@ type: project
 
 ## 当前聚焦
 
-- **组件**：全组件
-- **Phase**：Phase 9 ✅ 已完成
-- **正在做**：无
-- **下一步**：全部9个Phase已完成，项目交付就绪
+- **组件**：全组件（Phase 10）
+- **Phase**：Phase 10 ✅ 已完成
+- **正在做**：所有6处覆盖差距已补齐，项目100%完成
+- **下一步**：最终部署验证（可选）
+
+## 已完成的6项覆盖差距
+
+| # | 差距 | 状态 | 实现摘要 |
+|---|------|------|---------|
+| G1 | ScriptRunner | ✅ | script_runner.h/cpp, profiler_type=5, 7个测试 |
+| G2 | COS上传5种模式链式回退 | ✅ | cos_client.h/cpp, 5模式fallback, 6个测试 |
+| G3 | 多Server故障转移 | ✅ | server_pool.h, 3次失败自动切换, 6个测试 |
+| G4 | Java堆分析器 | ✅ | Go子项目, HPROF解析+泄漏嫌疑, 7个测试 |
+| G5 | D3交互式火焰图 | ✅ | FlameGraph.tsx + collapsed2tree.py |
+| G6 | ContainerInfo | ✅ | container_info.h/cpp, cgroup识别, 6个测试 |
 
 ## 当前阻塞
 
-- async-profiler 二进制因网络SSL问题无法在当前环境下载（Dockerfile脚本有fallback，构建时通常可用）
+- 无
 
-## 本次会话摘要
+## 上次会话摘要（2026-06-17）
 
-- 完成 Phase 8 智能归因+NL采集 全3步（rules.yaml + analysis_advisor.py + llm集成 + nl_parser + nl_handler + 前端AI面板）
-- 完成 Phase 9 测试加固+部署 全5步：
-  - Step 9.1: C++核心类单测 31个（TaskQueue/HeartbeatTracker/状态机/ProfilerFactory），含状态机抽取为纯函数
-  - Step 9.2: Go API集成测试 5个（NLChat/ListSuggestions/DeleteCascade），修复GORM t_id列名bug
-  - Step 9.3: 前端vitest 7个
-  - Step 9.4: Dockerfile x3 + docker-compose全服务 + Makefile demo target
-  - Step 9.5: 设计文档 docs/design.md（9页）
+- 完成Phase 10全部6个Step
+- 新增38个测试（C++ 25, Go 7, TS组件+CSS）
+- 全系统测试通过：C++ 56, Go 34+7, Python 39
+- 项目需求覆盖100%

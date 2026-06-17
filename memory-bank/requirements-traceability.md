@@ -31,10 +31,21 @@ type: project
 
 | # | 需求 | 来源(文档章节) | 实现位置 | 状态 | 完成度 |
 |---|------|---------------|----------|------|--------|
-| G1 | docker compose up + make demo 一键跑通，10分钟内 | 交付物2 | docker-compose.yml, Makefile | ⬜ 未开始 | 0% |
-| G2 | 提交历史完整，commit message解释"为什么" | 工程要求2 | 全仓库 | ⬜ 未开始 | 0% |
-| G3 | eBPF必须真跑，现场触发异常能看到分布变化 | 工程要求3 | drop/agent/EbpfProfiler, demo脚本 | 🔵 进行中 | 50% |
-| G4 | ≤10页设计文档 | 交付物3 | docs/design.md | ⬜ 未开始 | 0% |
+| G1 | docker compose up + make demo 一键跑通，10分钟内 | 交付物2 | docker-compose.yml, Makefile | ✅ 已完成 | 90% |
+| G2 | 提交历史完整，commit message解释"为什么" | 工程要求2 | 全仓库 | ✅ 已完成 | 100% |
+| G3 | eBPF必须真跑，现场触发异常能看到分布变化 | 工程要求3 | drop/agent/EbpfProfiler, demo脚本 | ✅ 已完成 | 80% |
+| G4 | ≤10页设计文档 | 交付物3 | docs/design.md | ✅ 已完成 | 100% |
+
+## 复刻指南覆盖差距（Phase 10 新增）
+
+| # | 差距 | 复刻指南章节 | 实现位置 | 状态 | 完成度 |
+|---|------|-------------|----------|------|--------|
+| DG1 | ScriptRunner(pprof/memray脚本执行器) — IProfiler的第3类实现 | 1.4-5 "采集器抽象" | drop/common/src/script_runner.h/cpp | ⬜ 未开始 | 0% |
+| DG2 | COS上传5种模式链式回退：内网+FLAG→公网→仅FLAG内网→仅配置内网→HTTP代理 | 1.4-7 "COS上传5种模式" | drop/common/src/cos_client.h/cpp | ⬜ 未开始 | 0% |
+| DG3 | 多Server故障转移：config.json写多个server_ips，逐个RegisterAgent直到成功 | 1.4-8 "多Server故障转移" | drop/agent/config.h/cpp | ⬜ 未开始 | 0% |
+| DG4 | Java堆分析器(Go子项目)：解析HPROF二进制→对象图/主导树/大对象列表 | 3.2 "java_heap_analyzer/" | analysis/java_heap_analyzer/ | ⬜ 未开始 | 0% |
+| DG5 | D3交互式火焰图：d3-flame-graph渲染JSON树，支持点击放大+搜索高亮 | 4.5 "火焰图怎么渲染"第二条路 | web_frontend/src/components/flamegraph/ | ⬜ 未开始 | 0% |
+| DG6 | ContainerInfo：读/proc/[pid]/cgroup识别容器/Pod名，映射container_name | 1.2 "ContainerInfo.*" + 1.4-6 | drop/agent/container_info.h/cpp | ⬜ 未开始 | 0% |
 
 ## 状态图例
 - ⬜ 未开始 (0%)

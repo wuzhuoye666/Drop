@@ -208,7 +208,7 @@ func TestToggleSchedule(t *testing.T) {
 	}
 
 	var mt model.MultiTasks
-	db.Where("tid = ?", "schtoggle01").First(&mt)
+	db.Where("t_id = ?", "schtoggle01").First(&mt)
 	if mt.Enabled {
 		t.Fatal("expected schedule to be paused")
 	}
