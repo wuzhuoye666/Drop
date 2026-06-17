@@ -112,12 +112,7 @@ void PGStore::UpdateTaskStatus(const std::string& tid, int new_status, const std
   PQclear(res);
 
   // Validate transition (mirror Go state machine)
-  static const int kPending = 0, kRunning = 1, kUploading = 2, kDone = 3, kFailed = 4;
-  bool allowed = false;
-  if (old_status == kPending && (new_status == kRunning || new_status == kFailed)) allowed = true;
-  if (old_status == kRunning && (new_status == kUploading || new_status == kFailed)) allowed = true;
-  if (old_status == kUploading && (new_status == kDone || new_status == kFailed)) allowed = true;
-  if (old_status == kFailed && new_status == kPending) allowed = true;
+  bool allowed = IsTransitionAllowed(old_status, new_status);
 
   if (!allowed) {
     LOG(WARNING) << "Illegal transition " << old_status << "->" << new_status
@@ -127,6 +122,7 @@ void PGStore::UpdateTaskStatus(const std::string& tid, int new_status, const std
   }
 
   // UPDATE
+  static const int kRunning = 1, kDone = 3, kFailed = 4;
   std::string update_sql =
       "UPDATE hotmethod_task SET status = $1, status_info = $2";
   if (new_status == kRunning) update_sql += ", begin_time = NOW()";
@@ -270,6 +266,16 @@ std::vector<PGStore::AgentRecord> PGStore::ListAgents() {
   }
   PQclear(res);
   return result;
+}
+
+bool IsTransitionAllowed(int old_status, int new_status) {
+  if (old_status == new_status) return false;
+  static const int kPending = 0, kRunning = 1, kUploading = 2, kDone = 3, kFailed = 4;
+  if (old_status == kPending && (new_status == kRunning || new_status == kFailed)) return true;
+  if (old_status == kRunning && (new_status == kUploading || new_status == kFailed)) return true;
+  if (old_status == kUploading && (new_status == kDone || new_status == kFailed)) return true;
+  if (old_status == kFailed && new_status == kPending) return true;
+  return false;
 }
 
 }  // namespace drop

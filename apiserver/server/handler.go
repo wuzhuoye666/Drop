@@ -603,7 +603,7 @@ func (s *APIServer) ListSuggestions(c *gin.Context) {
 	tid := c.Param("tid")
 
 	var suggestions []model.AnalysisSuggestion
-	s.db.Where("tid = ?", tid).Order("status ASC, id ASC").Find(&suggestions)
+	s.db.Where("t_id = ?", tid).Order("status ASC, id ASC").Find(&suggestions)
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": suggestions})
 }

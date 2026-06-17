@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 export PATH := $(PATH):/usr/local/go/bin:$(HOME)/go/bin
 
-.PHONY: proto build test demo clean help
+.PHONY: proto build test demo clean help infra-up infra-down
 
 # ── Proto generation ─────────────────────────────────────────────
 PROTO_DIR  := drop/common/proto
@@ -51,14 +51,10 @@ test-go:
 	cd apiserver && go test ./... || echo "Go tests: none found"
 
 test-python:
-	cd analysis && pytest || echo "Python tests: none found"
+	cd analysis && python3 -m pytest tests/ -v || echo "Python tests: none found"
 
 test-frontend:
-	cd web_frontend && npm test -- --passWithNoTests || echo "Frontend tests: none found"
-
-# ── Demo (placeholder) ───────────────────────────────────────────
-demo: ## Run demo (placeholder, filled in later phases)
-	@echo "demo target placeholder — will be implemented in Phase 9"
+	cd web_frontend && npx vitest run || echo "Frontend tests: none found"
 
 # ── Infrastructure ───────────────────────────────────────────────
 infra-up: ## Start postgres + minio
@@ -66,6 +62,48 @@ infra-up: ## Start postgres + minio
 
 infra-down: ## Stop and remove infrastructure
 	docker compose down -v
+
+# ── Docker ───────────────────────────────────────────────────────
+docker-build: ## Build all Docker images
+	docker compose build
+
+docker-up: ## Start all services via docker compose
+	docker compose up -d
+
+docker-down: ## Stop all services
+	docker compose down
+
+# ── Demo ─────────────────────────────────────────────────────────
+demo: ## Full demo: start infra, wait healthy, create eBPF task, apply IO pressure, show results
+	@echo "=== Drop Demo ==="
+	@echo "1. Starting infrastructure..."
+	@docker compose up postgres minio -d
+	@echo "2. Waiting for postgres..."
+	@for i in $$(seq 1 15); do pg_isready -h 127.0.0.1 -p 5432 -U drop >/dev/null 2>&1 && break; sleep 1; done
+	@echo "3. Waiting for minio..."
+	@for i in $$(seq 1 15); do curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1 && break; sleep 1; done
+	@echo "4. Starting apiserver..."
+	@cd apiserver && DROP_PG_DSN="host=127.0.0.1 port=5432 user=drop password=drop dbname=drop sslmode=disable" DROP_S3_ENDPOINT="127.0.0.1:9000" DROP_GRPC_ADDR="127.0.0.1:50051" ./apiserver -dev-mode &
+	@sleep 2
+	@echo "5. Creating eBPF off-CPU profiling task via API..."
+	@curl -sf -X POST http://127.0.0.1:8191/api/v1/tasks \
+		-H 'Content-Type: application/json' \
+		-H 'X-Dev-UID: demo' \
+		-d '{"name":"demo-ebpf","type":0,"profiler_type":3,"target_ip":"127.0.0.1","pid":0,"duration":15,"hz":0}' | python3 -m json.tool
+	@echo "6. Applying IO pressure (5 seconds)..."
+	@dd if=/dev/zero of=/tmp/drop_demo_io bs=1M count=50 2>/dev/null; rm -f /tmp/drop_demo_io
+	@echo "7. Waiting for analysis (20s)..."
+	@sleep 20
+	@echo "8. Checking task results..."
+	@curl -sf 'http://127.0.0.1:8191/api/v1/tasks?page=1&page_size=5' | python3 -m json.tool 2>/dev/null || echo "(apiserver may not be running — check manually)"
+	@echo ""
+	@echo "=== Demo complete ==="
+	@echo "Open http://127.0.0.1:5173 (if frontend dev server running) or http://127.0.0.1:80 (docker) to view flame graphs."
+	@echo "Stop demo: make demo-clean"
+
+demo-clean: ## Stop demo processes and infrastructure
+	-pkill -f "apiserver -dev-mode" 2>/dev/null
+	docker compose down
 
 # ── Clean ────────────────────────────────────────────────────────
 clean: ## Remove all build artifacts

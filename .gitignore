@@ -56,3 +56,5 @@ coverage/
 /package-lock.json
 apiserver/apiserver.yaml
 apiserver/bin/
+Testing/
+drop/Testing/

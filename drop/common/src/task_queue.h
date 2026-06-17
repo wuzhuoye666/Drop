@@ -112,4 +112,12 @@ private:
   void* conn_;  // PGconn*
 };
 
+// Pure function: validates whether a task status transition is allowed.
+// PENDING(0)→RUNNING(1), PENDING→FAILED(4),
+// RUNNING(1)→UPLOADING(2), RUNNING→FAILED(4),
+// UPLOADING(2)→DONE(3), UPLOADING→FAILED(4),
+// FAILED(4)→PENDING(0) (retry).
+// Returns false for same-state or any other transition.
+bool IsTransitionAllowed(int old_status, int new_status);
+
 }  // namespace drop

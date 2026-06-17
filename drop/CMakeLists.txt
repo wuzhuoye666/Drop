@@ -127,5 +127,21 @@ target_include_directories(drop_async_profiler_test PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/common/src
 )
 
+add_executable(drop_core_test
+  tests/core_test.cpp
+)
+target_link_libraries(drop_core_test PRIVATE
+  drop_common
+  GTest::GTest
+  GTest::gtest_main
+  glog::glog
+  pthread
+)
+target_include_directories(drop_core_test PRIVATE
+  ${GEN_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/src
+)
+
 add_test(NAME ebpf COMMAND drop_ebpf_test)
 add_test(NAME async_profiler COMMAND drop_async_profiler_test)
+add_test(NAME core COMMAND drop_core_test)
